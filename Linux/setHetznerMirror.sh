@@ -72,3 +72,4 @@ EOF
 else
   echo "$SERVER not available. Using default sources."
 fi
+apt update
