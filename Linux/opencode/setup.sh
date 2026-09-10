@@ -19,8 +19,8 @@ set -euo pipefail
 REPO_OWNER="singleton-factory"
 REPO_NAME="dev-tools"
 REPO_REF="main"
-OPENCODE_CONFIG_PATH="opencode/config.json"
-AGENTS_MD_PATH="opencode/AGENTS.md"
+OPENCODE_CONFIG_PATH="Linux/opencode/config.json"
+AGENTS_MD_PATH="Linux/opencode/AGENTS.md"
 
 RAW_BASE="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_REF}"
 CONFIG_URL="${RAW_BASE}/${OPENCODE_CONFIG_PATH}"
