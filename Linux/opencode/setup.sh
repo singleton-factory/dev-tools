@@ -70,13 +70,23 @@ install_as() {
 }
 
 # ---------------------------------------------------------------------------
-# 1) opencode installieren
+# 1) opencode installieren (überspringen, falls bereits vorhanden)
 # ---------------------------------------------------------------------------
-log "Installiere opencode für '${TARGET_USER}' ..."
-if [[ "$(id -un)" == "${TARGET_USER}" ]]; then
-  curl -fsSL "${OPENCODE_INSTALL_URL}" | bash
+OPENCODE_BIN="${TARGET_HOME}/.opencode/bin/opencode"
+if [[ "$(id -un)" == "root" && "$(id -un)" != "${TARGET_USER}" ]]; then
+  HAVE_OPENCODE="$(su -s /bin/bash "${TARGET_USER}" -c "test -x '${OPENCODE_BIN}' && echo yes" || true)"
 else
-  su -s /bin/bash "${TARGET_USER}" -c "curl -fsSL ${OPENCODE_INSTALL_URL} | bash"
+  HAVE_OPENCODE="$(test -x "${OPENCODE_BIN}" && echo yes || true)"
+fi
+if [[ "${HAVE_OPENCODE}" == "yes" ]]; then
+  log "opencode ist bereits installiert (${OPENCODE_BIN}), Installation übersprungen"
+else
+  log "Installiere opencode für '${TARGET_USER}' ..."
+  if [[ "$(id -un)" == "${TARGET_USER}" ]]; then
+    curl -fsSL "${OPENCODE_INSTALL_URL}" | bash
+  else
+    su -s /bin/bash "${TARGET_USER}" -c "curl -fsSL ${OPENCODE_INSTALL_URL} | bash"
+  fi
 fi
 
 # ---------------------------------------------------------------------------
