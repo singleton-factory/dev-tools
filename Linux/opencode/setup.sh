@@ -103,16 +103,35 @@ install_as "${tmp_config}" "${OPENCODE_CONFIG_DIR}/opencode.json"
 log "Konfiguration nach ${OPENCODE_CONFIG_DIR}/opencode.json installiert"
 
 # ---------------------------------------------------------------------------
-# 3) AGENTS.md herunterladen
+# 3) AGENTS.md herunterladen (optional – schlägt nicht hart fehl,
+#    wird NIEMALS überschrieben)
 # ---------------------------------------------------------------------------
-if [[ -d "${WORKSPACE_DIR}" ]]; then
+AGENTS_DEST="${WORKSPACE_DIR}/AGENTS.md"
+if [[ ! -d "${WORKSPACE_DIR}" ]]; then
+  log "HINWEIS: ${WORKSPACE_DIR} existiert nicht, AGENTS.md-Download übersprungen"
+elif [[ -e "${AGENTS_DEST}" ]]; then
+  log "AGENTS.md existiert bereits (${AGENTS_DEST}), Download übersprungen"
+else
   tmp_agents="$(mktemp)"
   trap 'rm -f "${tmp_config}" "${tmp_agents}"' EXIT
-  download "${AGENTS_URL}" "${tmp_agents}"
-  install_as "${tmp_agents}" "${WORKSPACE_DIR}/AGENTS.md"
-  log "AGENTS.md nach ${WORKSPACE_DIR}/AGENTS.md installiert"
-else
-  log "HINWEIS: ${WORKSPACE_DIR} existiert nicht, AGENTS.md-Download übersprungen"
+  if ! download "${AGENTS_URL}" "${tmp_agents}"; then
+    log "WARNUNG: AGENTS.md-Download fehlgeschlagen (weiterhin ohne Fehler)"
+  elif [[ -w "${WORKSPACE_DIR}" ]]; then
+    install_as "${tmp_agents}" "${WORKSPACE_DIR}/AGENTS.md" \
+      && log "AGENTS.md nach ${WORKSPACE_DIR}/AGENTS.md installiert" \
+      || log "WARNUNG: AGENTS.md konnte nicht installiert werden (weiterhin ohne Fehler)"
+  elif command -v sudo >/dev/null 2>&1; then
+    log "${WORKSPACE_DIR} nicht schreibbar, versuche mit sudo ..."
+    SUDO="$(command -v sudo)"
+    if "$SUDO" install -m 0644 -o "${TARGET_USER}" -g "${TARGET_USER}" \
+       "${tmp_agents}" "${WORKSPACE_DIR}/AGENTS.md" 2>/dev/null; then
+      log "AGENTS.md (via sudo) nach ${WORKSPACE_DIR}/AGENTS.md installiert"
+    else
+      log "WARNUNG: AGENTS.md konnte nicht installiert werden, auch nicht mit sudo"
+    fi
+  else
+    log "HINWEIS: ${WORKSPACE_DIR} nicht schreibbar und sudo nicht verfügbar, AGENTS.md übersprungen"
+  fi
 fi
 
 log "Fertig."
