@@ -1,0 +1,195 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  "model": "ollama/qwen3.8:27b",
+
+  "provider": {
+    "ollama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Ollama (Proxy)",
+      "options": {
+        "baseURL": "http://ai-proxy.lan:11434/v1"
+      },
+      "models": {
+        "qwen3.8:27b": {
+          "name": "Qwen 3.8 27B",
+          "limit": {
+            "context": 32768,
+            "output": 4096
+          }
+        }
+      }
+    }
+  },
+
+  "permission": {
+    "*": "ask",
+
+    "read": {
+      "*": "allow",
+      "*.env": "deny",
+      "*.env.*": "deny",
+      "*.env.example": "allow"
+    },
+
+    "glob": "allow",
+    "grep": "allow",
+    "list": "allow",
+    "lsp": "allow",
+    "task": "allow",
+
+    "edit": "allow",
+
+    "external_directory": "ask",
+    "webfetch": "ask",
+    "websearch": "ask",
+    "doom_loop": "ask",
+
+    "bash": {
+      "*": "ask",
+
+      "pwd": "allow",
+      "pwd *": "allow",
+
+      "ls": "allow",
+      "ls *": "allow",
+
+      "cat *": "allow",
+      "head *": "allow",
+      "tail *": "allow",
+
+      "grep *": "allow",
+      "rg *": "allow",
+      "find *": "allow",
+
+      "git status": "allow",
+      "git status *": "allow",
+
+      "git diff": "allow",
+      "git diff *": "allow",
+
+      "git log": "allow",
+      "git log *": "allow",
+
+      "git show *": "allow",
+
+      "git branch": "allow",
+      "git branch *": "allow",
+
+      "git grep *": "allow",
+
+      "git add *": "ask",
+      "git restore *": "ask",
+      "git checkout *": "ask",
+      "git switch *": "ask",
+      "git commit *": "ask",
+      "git reset *": "ask",
+      "git clean *": "ask",
+
+      "git push": "deny",
+      "git push *": "deny",
+
+      "rm *": "ask",
+      "sudo *": "deny"
+    }
+  },
+
+  "agent": {
+    "build": {
+      "mode": "primary",
+      "model": "ollama/qwen3.8:27b",
+
+      "permission": {
+        "edit": "allow",
+
+        "bash": {
+          "*": "ask",
+
+          "pwd": "allow",
+          "pwd *": "allow",
+
+          "ls": "allow",
+          "ls *": "allow",
+
+          "cat *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+
+          "grep *": "allow",
+          "rg *": "allow",
+          "find *": "allow",
+
+          "git status": "allow",
+          "git status *": "allow",
+
+          "git diff": "allow",
+          "git diff *": "allow",
+
+          "git log": "allow",
+          "git log *": "allow",
+
+          "git show *": "allow",
+
+          "git branch": "allow",
+          "git branch *": "allow",
+
+          "git grep *": "allow",
+
+          "git add *": "ask",
+          "git commit *": "ask",
+
+          "git push": "deny",
+          "git push *": "deny",
+
+          "rm *": "ask",
+          "sudo *": "deny"
+        }
+      }
+    },
+
+    "reviewer": {
+      "description": "Independent code review without modifying files.",
+      "mode": "subagent",
+      "model": "ollama/qwen3.8:27b",
+      "temperature": 0.1,
+
+      "prompt": "Review the implementation independently. Inspect the relevant source files, tests, and git diff. Focus on correctness, regressions, edge cases, security, performance, unnecessary complexity, and missing tests. Do not modify files. Report concrete findings ordered by severity and include file references when possible. If there are no meaningful issues, say so explicitly.",
+
+      "permission": {
+        "edit": "deny",
+        "webfetch": "deny",
+        "websearch": "deny",
+
+        "bash": {
+          "*": "deny",
+
+          "pwd": "allow",
+          "pwd *": "allow",
+
+          "ls": "allow",
+          "ls *": "allow",
+
+          "cat *": "allow",
+          "head *": "allow",
+          "tail *": "allow",
+
+          "grep *": "allow",
+          "rg *": "allow",
+          "find *": "allow",
+
+          "git status": "allow",
+          "git status *": "allow",
+
+          "git diff": "allow",
+          "git diff *": "allow",
+
+          "git log": "allow",
+          "git log *": "allow",
+
+          "git show *": "allow",
+          "git grep *": "allow"
+        }
+      }
+    }
+  }
+}
