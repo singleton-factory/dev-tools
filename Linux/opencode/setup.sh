@@ -36,7 +36,39 @@ else
 fi
 TARGET_HOME="${TARGET_USER_HOME:-/home/${TARGET_USER}}"
 OPENCODE_CONFIG_DIR="${TARGET_HOME}/.config/opencode"
-WORKSPACE_DIR="${WORKSPACE_DIR:-/workspace}"
+
+# Workspace-Verzeichnis ermitteln:
+#   1. WORKSPACE_DIR-Umgebungsvariable (wenn gesetzt)
+#   2. VSCODE_FOLDER_URI (steht in postCreateCommand zur Verfügung)
+#   3. /workspace (Standard-Mount)
+#   4. erstes Subverzeichnis von /workspaces (Muster /workspaces/<Projektname>)
+#   5. sonst leere Variable -> AGENTS.md-Download wird übersprungen
+resolve_workspace_dir() {
+  if [[ -n "${WORKSPACE_DIR:-}" && -d "${WORKSPACE_DIR}" ]]; then
+    printf '%s' "${WORKSPACE_DIR}"
+    return
+  fi
+  if [[ -n "${VSCODE_FOLDER_URI:-}" ]]; then
+    local path="${VSCODE_FOLDER_URI#file://}"
+    path="${path%%\?*}"
+    if [[ -d "${path}" ]]; then
+      printf '%s' "${path}"
+      return
+    fi
+  fi
+  if [[ -d /workspace ]]; then
+    printf '%s' /workspace
+    return
+  fi
+  local dir
+  for dir in /workspaces/*/; do
+    [[ -d "${dir}" ]] || continue
+    printf '%s' "$(dirname "${dir}")"
+    return
+  done
+  printf ''
+}
+WORKSPACE_DIR="$(resolve_workspace_dir)"
 
 # ---------------------------------------------------------------------------
 # Helfer
@@ -88,6 +120,21 @@ else
     su -s /bin/bash "${TARGET_USER}" -c "curl -fsSL ${OPENCODE_INSTALL_URL} | bash"
   fi
 fi
+
+# PATH sicherstellen (opencode-Installer erkennt Shell-Config bei curl|bash
+# manchmal nicht – wir ergänzen den Eintrag daher explizit)
+OPENCODE_BIN_DIR="${TARGET_HOME}/.opencode/bin"
+for rc_file in "${TARGET_HOME}/.bashrc" "${TARGET_HOME}/.profile"; do
+  if [[ -f "${rc_file}" ]] && ! grep -qF "${OPENCODE_BIN_DIR}" "${rc_file}"; then
+    {
+      echo ""
+      echo "opencode"
+      echo "export PATH=\"${OPENCODE_BIN_DIR}:\$PATH\""
+    } >> "${rc_file}"
+    log "PATH-Eintrag für ${OPENCODE_BIN_DIR} in ${rc_file} ergänzt"
+    break
+  fi
+done
 
 # ---------------------------------------------------------------------------
 # 2) opencode-Konfiguration herunterladen
