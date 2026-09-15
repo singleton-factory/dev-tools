@@ -63,7 +63,7 @@ resolve_workspace_dir() {
   local dir
   for dir in /workspaces/*/; do
     [[ -d "${dir}" ]] || continue
-    printf '%s' "$(dirname "${dir}")"
+    printf '%s' "${dir%/}"
     return
   done
   printf ''
