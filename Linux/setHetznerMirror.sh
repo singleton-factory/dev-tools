@@ -47,7 +47,6 @@ EOF
   apt install bc -y
     if [ $(echo "$osVersionID < 26.04" | bc) -eq 1 ]; then
       echo "deb https://mirror.hetzner.com/ubuntu/packages  $osCodename          main restricted universe multiverse" > /etc/apt/sources.list
-      echo "deb https://mirror.hetzner.com/ubuntu/packages  $osCodename          main restricted universe multiverse" > /etc/apt/sources.list
       echo "deb https://mirror.hetzner.com/ubuntu/packages  $osCodename-updates  main restricted universe multiverse" >> /etc/apt/sources.list
       echo "deb https://mirror.hetzner.com/ubuntu/security  $osCodename-security  main restricted universe multiverse" >> /etc/apt/sources.list
       echo "deb https://mirror.hetzner.com/ubuntu/packages  $osCodename-backports main restricted universe multiverse" >> /etc/apt/sources.list
