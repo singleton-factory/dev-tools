@@ -2,10 +2,13 @@
 #
 # setup-opencode.sh
 #
-# Wird während dem Docker-Build-Prozess durch
+# Wird während dem Docker-Build-Prozess und als devcontainer-postCreateCommand
+# durch
 #     curl -fsSL <diese-URL> | bash
-#   ausgeführt. Installiert opencode und lädt die opencode-Konfiguration
-#   sowie AGENTS.md von GitHub herunter.
+#   ausgeführt. Installiert opencode und legt im Projekt-Workspace die
+#   Template-Dateien aus dem Ordner Linux/opencode an (AGENTS.md,
+#   config.json -> opencode.json, agents/*.md -> .opencode/agents/*.md;
+#   vorhandene Dateien werden NIEMALS überschrieben).
 #
 # Hinweis: Parameterübergabe ist nicht möglich, daher sind die URLs unten
 # fest hinterlegt. Bei Änderungen diese Datei im Repository anpassen.
@@ -19,14 +22,19 @@ set -euo pipefail
 REPO_OWNER="singleton-factory"
 REPO_NAME="dev-tools"
 REPO_REF="main"
-OPENCODE_CONFIG_PATH="Linux/opencode/config.json"
-AGENTS_MD_PATH="Linux/opencode/AGENTS.md"
 
 RAW_BASE="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_REF}"
-CONFIG_URL="${RAW_BASE}/${OPENCODE_CONFIG_PATH}"
-AGENTS_URL="${RAW_BASE}/${AGENTS_MD_PATH}"
-
 OPENCODE_INSTALL_URL="https://opencode.ai/install"
+
+# Template-Dateien, die aus Linux/opencode in den Projekt-Workspace kopiert
+# werden (Format: "<Quellpfad im Repo>|<Zielpfad relativ zum Workspace>"):
+WORKSPACE_FILES=(
+  "Linux/opencode/AGENTS.md|AGENTS.md"
+  "Linux/opencode/config.json|opencode.json"
+  "Linux/opencode/agents/explorer.md|.opencode/agents/explorer.md"
+  "Linux/opencode/agents/verifier.md|.opencode/agents/verifier.md"
+  "Linux/opencode/agents/reviewer.md|.opencode/agents/reviewer.md"
+)
 
 # Ziel-User und Pfade (Standard: vscode-User, wie im devcontainer)
 if id -u vscode >/dev/null 2>&1; then
@@ -35,29 +43,16 @@ else
   TARGET_USER="$(id -un)"
 fi
 TARGET_HOME="${TARGET_USER_HOME:-/home/${TARGET_USER}}"
-OPENCODE_CONFIG_DIR="${TARGET_HOME}/.config/opencode"
 
 # Workspace-Verzeichnis ermitteln:
 #   1. WORKSPACE_DIR-Umgebungsvariable (wenn gesetzt)
-#   2. VSCODE_FOLDER_URI (steht in postCreateCommand zur Verfügung)
-#   3. /workspace (Standard-Mount)
-#   4. erstes Subverzeichnis von /workspaces (Muster /workspaces/<Projektname>)
-#   5. sonst leere Variable -> AGENTS.md-Download wird übersprungen
+#   2. erstes Subverzeichnis von /workspaces (Muster /workspaces/<Projektname>)
+#   3. VSCODE_FOLDER_URI (steht in postCreateCommand zur Verfügung,
+#      /workspace wird explizit ausgeschlossen)
+#   4. sonst leere Variable -> Workspace-Installation wird übersprungen
 resolve_workspace_dir() {
   if [[ -n "${WORKSPACE_DIR:-}" && -d "${WORKSPACE_DIR}" ]]; then
     printf '%s' "${WORKSPACE_DIR}"
-    return
-  fi
-  if [[ -n "${VSCODE_FOLDER_URI:-}" ]]; then
-    local path="${VSCODE_FOLDER_URI#file://}"
-    path="${path%%\?*}"
-    if [[ -d "${path}" ]]; then
-      printf '%s' "${path}"
-      return
-    fi
-  fi
-  if [[ -d /workspace ]]; then
-    printf '%s' /workspace
     return
   fi
   local dir
@@ -66,6 +61,14 @@ resolve_workspace_dir() {
     printf '%s' "${dir%/}"
     return
   done
+  if [[ -n "${VSCODE_FOLDER_URI:-}" ]]; then
+    local path="${VSCODE_FOLDER_URI#file://}"
+    path="${path%%\?*}"
+    if [[ -d "${path}" && "${path}" != /workspace ]]; then
+      printf '%s' "${path}"
+      return
+    fi
+  fi
   printf ''
 }
 WORKSPACE_DIR="$(resolve_workspace_dir)"
@@ -76,17 +79,21 @@ WORKSPACE_DIR="$(resolve_workspace_dir)"
 
 log() { printf '[setup-opencode] %s\n' "$*"; }
 
+# Datei herunterladen; schlägt weich fehl (return 1), da alle
+# Workspace-Downloads optional sind
 download() {
   local url="$1"
   local dest="$2"
   log "GET ${url}"
   if ! curl -fsSL --retry 3 --retry-delay 2 -o "${dest}" "${url}"; then
-    log "FEHLER: Download von ${url} fehlgeschlagen"
-    exit 1
+    log "WARNUNG: Download von ${url} fehlgeschlagen"
+    rm -f "${dest}"
+    return 1
   fi
   if [[ ! -s "${dest}" ]]; then
-    log "FEHLER: Download von ${url} ist leer"
-    exit 1
+    log "WARNUNG: Download von ${url} ist leer"
+    rm -f "${dest}"
+    return 1
   fi
 }
 
@@ -99,6 +106,66 @@ install_as() {
   else
     install -m 0644 "${src}" "${dest}"
   fi
+}
+
+# Eine Template-Datei aus Linux/opencode in den Workspace legen; schlägt
+# nicht hart fehl und wird NIEMALS überschrieben
+deploy_workspace_file() {
+  local src="$1"
+  local rel="$2"
+  local dest="${WORKSPACE_DIR}/${rel}"
+  local destdir tmp writable
+  destdir="$(dirname "${dest}")"
+
+  if [[ -e "${dest}" ]]; then
+    log "${rel} existiert bereits (${dest}), Download übersprungen"
+    return 0
+  fi
+
+  if ! tmp="$(mktemp)"; then
+    log "WARNUNG: mktemp fehlgeschlagen, ${rel} übersprungen"
+    return 0
+  fi
+  if ! download "${RAW_BASE}/${src}" "${tmp}"; then
+    rm -f "${tmp}"
+    return 0
+  fi
+
+  writable=0
+  if [[ -d "${destdir}" ]]; then
+    if [[ -w "${destdir}" ]]; then
+      writable=1
+    fi
+  else
+    if mkdir -p "${destdir}" 2>/dev/null; then
+      writable=1
+    fi
+  fi
+
+  if [[ "${writable}" -eq 1 ]]; then
+    if install_as "${tmp}" "${dest}"; then
+      log "${rel} nach ${dest} installiert"
+    else
+      log "WARNUNG: ${rel} konnte nicht installiert werden (weiterhin ohne Fehler)"
+    fi
+  elif command -v sudo >/dev/null 2>&1; then
+    log "${destdir} nicht schreibbar, versuche mit sudo ..."
+    local sudo_bin
+    sudo_bin="$(command -v sudo)"
+    if { [[ -d "${destdir}" ]] || \
+         "${sudo_bin}" install -d -m 0755 -o "${TARGET_USER}" -g "${TARGET_USER}" \
+           "${destdir}" 2>/dev/null; } && \
+       "${sudo_bin}" install -m 0644 -o "${TARGET_USER}" -g "${TARGET_USER}" \
+         "${tmp}" "${dest}" 2>/dev/null; then
+      log "${rel} (via sudo) nach ${dest} installiert"
+    else
+      log "WARNUNG: ${rel} konnte nicht installiert werden, auch nicht mit sudo"
+    fi
+  else
+    log "HINWEIS: ${destdir} nicht schreibbar und sudo nicht verfügbar, ${rel} übersprungen"
+  fi
+  rm -f "${tmp}"
+  return 0
 }
 
 # ---------------------------------------------------------------------------
@@ -128,7 +195,7 @@ for rc_file in "${TARGET_HOME}/.bashrc" "${TARGET_HOME}/.profile"; do
   if [[ -f "${rc_file}" ]] && ! grep -qF "${OPENCODE_BIN_DIR}" "${rc_file}"; then
     {
       echo ""
-      echo "opencode"
+      echo "# opencode"
       echo "export PATH=\"${OPENCODE_BIN_DIR}:\$PATH\""
     } >> "${rc_file}"
     log "PATH-Eintrag für ${OPENCODE_BIN_DIR} in ${rc_file} ergänzt"
@@ -137,48 +204,16 @@ for rc_file in "${TARGET_HOME}/.bashrc" "${TARGET_HOME}/.profile"; do
 done
 
 # ---------------------------------------------------------------------------
-# 2) opencode-Konfiguration herunterladen
+# 2) Projekt-Dateien in den Workspace legen (optional – schlägt nicht hart
+#    fehl, wird NIEMALS überschrieben)
 # ---------------------------------------------------------------------------
-mkdir -p "${OPENCODE_CONFIG_DIR}"
-if [[ "$(id -un)" == "root" ]]; then
-  chown "${TARGET_USER}:${TARGET_USER}" "${OPENCODE_CONFIG_DIR}"
-fi
-tmp_config="$(mktemp)"
-trap 'rm -f "${tmp_config}"' EXIT
-download "${CONFIG_URL}" "${tmp_config}"
-install_as "${tmp_config}" "${OPENCODE_CONFIG_DIR}/opencode.json"
-log "Konfiguration nach ${OPENCODE_CONFIG_DIR}/opencode.json installiert"
-
-# ---------------------------------------------------------------------------
-# 3) AGENTS.md herunterladen (optional – schlägt nicht hart fehl,
-#    wird NIEMALS überschrieben)
-# ---------------------------------------------------------------------------
-AGENTS_DEST="${WORKSPACE_DIR}/AGENTS.md"
-if [[ ! -d "${WORKSPACE_DIR}" ]]; then
-  log "HINWEIS: ${WORKSPACE_DIR} existiert nicht, AGENTS.md-Download übersprungen"
-elif [[ -e "${AGENTS_DEST}" ]]; then
-  log "AGENTS.md existiert bereits (${AGENTS_DEST}), Download übersprungen"
+if [[ -z "${WORKSPACE_DIR}" || ! -d "${WORKSPACE_DIR}" ]]; then
+  log "HINWEIS: kein Workspace-Verzeichnis gefunden, Workspace-Installation übersprungen"
 else
-  tmp_agents="$(mktemp)"
-  trap 'rm -f "${tmp_config}" "${tmp_agents}"' EXIT
-  if ! download "${AGENTS_URL}" "${tmp_agents}"; then
-    log "WARNUNG: AGENTS.md-Download fehlgeschlagen (weiterhin ohne Fehler)"
-  elif [[ -w "${WORKSPACE_DIR}" ]]; then
-    install_as "${tmp_agents}" "${WORKSPACE_DIR}/AGENTS.md" \
-      && log "AGENTS.md nach ${WORKSPACE_DIR}/AGENTS.md installiert" \
-      || log "WARNUNG: AGENTS.md konnte nicht installiert werden (weiterhin ohne Fehler)"
-  elif command -v sudo >/dev/null 2>&1; then
-    log "${WORKSPACE_DIR} nicht schreibbar, versuche mit sudo ..."
-    SUDO="$(command -v sudo)"
-    if "$SUDO" install -m 0644 -o "${TARGET_USER}" -g "${TARGET_USER}" \
-       "${tmp_agents}" "${WORKSPACE_DIR}/AGENTS.md" 2>/dev/null; then
-      log "AGENTS.md (via sudo) nach ${WORKSPACE_DIR}/AGENTS.md installiert"
-    else
-      log "WARNUNG: AGENTS.md konnte nicht installiert werden, auch nicht mit sudo"
-    fi
-  else
-    log "HINWEIS: ${WORKSPACE_DIR} nicht schreibbar und sudo nicht verfügbar, AGENTS.md übersprungen"
-  fi
+  log "Workspace: ${WORKSPACE_DIR}"
+  for entry in "${WORKSPACE_FILES[@]}"; do
+    deploy_workspace_file "${entry%%|*}" "${entry#*|}"
+  done
 fi
 
 log "Fertig."

@@ -1,34 +1,34 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "lsp": true,
-  "model": "ollama/qwen3.6:27b",
-
+  "model": "llama/qwen3.8-27b",
   "provider": {
-    "ollama": {
+    "llama": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "Ollama (Proxy)",
+      "name": "llama.cpp (Proxy)",
+
       "options": {
-        "baseURL": "http://ai-proxy.lan:11434/v1"
+        "baseURL": "http://ai-proxy.lan:9931/v1"
       },
+
       "models": {
-        "qwen3.6:27b": {
-          "name": "Qwen 3.6 27B",
+        "qwen3.8-27b": {
+          "name": "Qwen 3.8 27B",
           "limit": {
-            "context": 32768,
-            "output": 4096
+            "context": 65536,
+            "output": 8192
           }
         }
       }
     }
   },
-
-    "agent": {
+  "agent": {
     "explorer": {
       "description": "Read-only repository analyst. Use before substantial or unclear changes to locate relevant code, call sites, tests, constraints and likely root causes.",
       "mode": "subagent",
       "model": "llama/qwen3.8-27b",
       "temperature": 0.1,
-      "prompt": "{file:./agents/explorer.md}",
+      "prompt": "{file:./.opencode/agents/explorer.md}",
       "tools": {
         "write": false,
         "edit": false
@@ -44,7 +44,7 @@
       "mode": "subagent",
       "model": "llama/qwen3.8-27b",
       "temperature": 0.1,
-      "prompt": "{file:./agents/verifier.md}",
+      "prompt": "{file:./.opencode/agents/verifier.md}",
       "tools": {
         "write": false,
         "edit": false
@@ -60,7 +60,7 @@
       "mode": "subagent",
       "model": "llama/qwen3.8-27b",
       "temperature": 0.1,
-      "prompt": "{file:./agents/reviewer.md}",
+      "prompt": "{file:./.opencode/agents/reviewer.md}",
       "tools": {
         "write": false,
         "edit": false
