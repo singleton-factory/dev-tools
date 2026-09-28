@@ -28,7 +28,7 @@
       "mode": "subagent",
       "model": "llama/qwen3.8-27b",
       "temperature": 0.1,
-      "prompt": "{file:./agents/explorer.md}",
+      "prompt": "{file:./.opencode/agents/explorer.md}",
       "tools": {
         "write": false,
         "edit": false
@@ -44,7 +44,7 @@
       "mode": "subagent",
       "model": "llama/qwen3.8-27b",
       "temperature": 0.1,
-      "prompt": "{file:./agents/verifier.md}",
+      "prompt": "{file:./.opencode/agents/verifier.md}",
       "tools": {
         "write": false,
         "edit": false
@@ -60,7 +60,7 @@
       "mode": "subagent",
       "model": "llama/qwen3.8-27b",
       "temperature": 0.1,
-      "prompt": "{file:./agents/reviewer.md}",
+      "prompt": "{file:./.opencode/agents/reviewer.md}",
       "tools": {
         "write": false,
         "edit": false
