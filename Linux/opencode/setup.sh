@@ -494,12 +494,7 @@ fi
 # ---------------------------------------------------------------------------
 if [[ "$(id -un)" != "root" ]]; then
   log "postCreate erkannt (ausgeführt als '$(id -un)'), starte opencode service ..."
-  if [[ "$(id -un)" == "root" && "$(id -un)" != "${TARGET_USER}" ]]; then
-    su -s /bin/bash "${TARGET_USER}" -c "nohup '${OPENCODE_BIN}' service start >/dev/null 2>&1 &" || \
-      log "WARNUNG: opencode service konnte nicht gestartet werden"
-  else
-    nohup "${OPENCODE_BIN}" service start >/dev/null 2>&1 &
-  fi
+  nohup "${OPENCODE_BIN}" service start >/dev/null 2>&1 &
 else
   log "Docker-Build erkannt (root), opencode service wird nicht gestartet"
 fi
