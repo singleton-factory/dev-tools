@@ -5,7 +5,7 @@
 # Wird während dem Docker-Build-Prozess und als devcontainer-postCreateCommand
 # durch
 #     curl -fsSL <diese-URL> | bash
-#   ausgeführt. Installiert opencode und legt im Projekt-Workspace die
+#   ausgeführt. Installiert opencode v2 und legt im Projekt-Workspace die
 #   Template-Dateien aus dem Ordner Linux/opencode an (AGENTS.md,
 #   config.json -> opencode.json, agents/*.md -> .opencode/agents/*.md;
 #   vorhandene Dateien werden NIEMALS überschrieben).
@@ -24,7 +24,9 @@ REPO_NAME="dev-tools"
 REPO_REF="main"
 
 RAW_BASE="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_REF}"
-OPENCODE_INSTALL_URL="https://opencode.ai/install"
+# v2-Installer (installiert die Version aus dem v2-Channel, z. B. 2.0.x;
+# der v1-Installer würde weiterhin nur die letzten v1-Releases liefern)
+OPENCODE_INSTALL_URL="https://opencode.ai/v2/install"
 
 # Template-Dateien, die aus Linux/opencode in den Projekt-Workspace kopiert
 # werden (Format: "<Quellpfad im Repo>|<Zielpfad relativ zum Workspace>"):
@@ -169,18 +171,28 @@ deploy_workspace_file() {
 }
 
 # ---------------------------------------------------------------------------
-# 1) opencode installieren (überspringen, falls bereits vorhanden)
+# 1) opencode v2 installieren (überspringen, falls v2 bereits vorhanden;
+#    ältere Versionen, z. B. v1, werden durch den v2-Installer ersetzt,
+#    da dieser das Binär in $HOME/.opencode/bin überschreibt)
 # ---------------------------------------------------------------------------
 OPENCODE_BIN="${TARGET_HOME}/.opencode/bin/opencode"
 if [[ "$(id -un)" == "root" && "$(id -un)" != "${TARGET_USER}" ]]; then
-  HAVE_OPENCODE="$(su -s /bin/bash "${TARGET_USER}" -c "test -x '${OPENCODE_BIN}' && echo yes" || true)"
+  OPENCODE_VERSION="$(su -s /bin/bash "${TARGET_USER}" -c "'${OPENCODE_BIN}' --version" 2>/dev/null || true)"
 else
-  HAVE_OPENCODE="$(test -x "${OPENCODE_BIN}" && echo yes || true)"
+  OPENCODE_VERSION="$("${OPENCODE_BIN}" --version 2>/dev/null || true)"
 fi
-if [[ "${HAVE_OPENCODE}" == "yes" ]]; then
-  log "opencode ist bereits installiert (${OPENCODE_BIN}), Installation übersprungen"
+# Letztes Wort (Versionsnummer) herausnehmen und evtl. führendes 'v' entfernen,
+# z. B. "opencode v2.0.23" -> "2.0.23"
+OPENCODE_VERSION="${OPENCODE_VERSION##* }"
+OPENCODE_VERSION="${OPENCODE_VERSION#v}"
+if [[ "${OPENCODE_VERSION}" == 2.* ]]; then
+  log "opencode v${OPENCODE_VERSION} ist bereits installiert (${OPENCODE_BIN}), Installation übersprungen"
 else
-  log "Installiere opencode für '${TARGET_USER}' ..."
+  if [[ -n "${OPENCODE_VERSION}" ]]; then
+    log "opencode v${OPENCODE_VERSION} vorhanden, installiere v2 für '${TARGET_USER}' ..."
+  else
+    log "Installiere opencode v2 für '${TARGET_USER}' ..."
+  fi
   if [[ "$(id -un)" == "${TARGET_USER}" ]]; then
     curl -fsSL "${OPENCODE_INSTALL_URL}" | bash
   else
