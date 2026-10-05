@@ -211,6 +211,14 @@ deploy_file() {
     if [[ -w "${destdir}" ]]; then
       writable=1
     fi
+  elif [[ "$(id -un)" == "root" ]]; then
+    # Als root neu angelegte Verzeichnisse sind root-eigen; das
+    # Zielverzeichnis direkt dem Ziel-User zuordnen ('install -d', wie
+    # beim Telegram-Config-Verzeichnis), damit dieser später hinein
+    # schreiben kann (z. B. ~/.config/opencode)
+    if install -d -m 0755 -o "${TARGET_USER}" -g "${TARGET_USER}" "${destdir}" 2>/dev/null; then
+      writable=1
+    fi
   else
     if mkdir -p "${destdir}" 2>/dev/null; then
       writable=1
