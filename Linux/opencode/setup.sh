@@ -103,6 +103,72 @@ download() {
   fi
 }
 
+# Minimalversion (Major) von Node.js, die verfügbar sein muss
+NODE_MAJOR_MIN=22
+
+# nodejs + npm sicherstellen: falls kein node >= ${NODE_MAJOR_MIN}
+# installiert ist, wird Node.js ${NODE_MAJOR_MIN} über den NodeSource-APT-
+# Repository installiert (das Distro-Paket 'nodejs' ist oft zu alt, z. B.
+# Node 18 in Debian 12); schlägt NodeSource fehl, wird auf das APT-Paket
+# nodejs/npm (wie in Linux/setupCodex.sh) zurückgefallen. Schlägt weich
+# fehl (Warnung), da das Telegram-Plugin optional ist.
+install_nodejs() {
+  local apt sudo_bin
+  if [[ "$(id -un)" == "root" ]]; then
+    apt="apt-get"
+    sudo_bin=""
+  elif command -v sudo >/dev/null 2>&1; then
+    apt="sudo apt-get"
+    sudo_bin="sudo"
+  else
+    log "WARNUNG: weder root noch sudo verfügbar, nodejs/npm können nicht installiert werden"
+    return 1
+  fi
+
+  # Ist node bereits mindestens ${NODE_MAJOR_MIN}, nichts tun
+  local v major
+  v="$(node --version 2>/dev/null || true)"
+  v="${v#v}"
+  major="${v%%.*}"
+  if [[ "${major}" =~ ^[0-9]+$ ]] && (( 10#${major} >= NODE_MAJOR_MIN )); then
+    log "node ${v} ist bereits installiert (>= ${NODE_MAJOR_MIN}), Installation übersprungen"
+    return 0
+  fi
+
+  # In manchen Basen-Images fehlt /var/lib/apt/lists/partial, und APT
+  # legt es nicht selbst an (sonst 'List directory ... missing')
+  mkdir -p /var/lib/apt/lists/partial 2>/dev/null || \
+    sudo mkdir -p /var/lib/apt/lists/partial 2>/dev/null || true
+
+  # Node.js ${NODE_MAJOR_MIN} über NodeSource
+  local setup_script setup_ok
+  setup_script="$(mktemp)"
+  if curl -fsSL -o "${setup_script}" "https://deb.nodesource.com/setup_${NODE_MAJOR_MIN}.x"; then
+    log "Installiere Node.js ${NODE_MAJOR_MIN} via NodeSource ..."
+    setup_ok=0
+    if [[ -z "${sudo_bin}" ]]; then
+      bash "${setup_script}" && setup_ok=1
+    else
+      "${sudo_bin}" bash "${setup_script}" && setup_ok=1
+    fi
+    if [[ "${setup_ok}" -eq 1 ]] && "${apt}" install -y nodejs; then
+      log "nodejs ${NODE_MAJOR_MIN} installiert"
+      rm -f "${setup_script}"
+      return 0
+    fi
+  fi
+  rm -f "${setup_script}"
+
+  # Fallback: Distro-Pakete (können älter als ${NODE_MAJOR_MIN} sein)
+  log "installiere nodejs/npm via APT ..."
+  if "${apt}" update && "${apt}" install -y nodejs npm; then
+    log "nodejs/npm installiert"
+    return 0
+  fi
+  log "WARNUNG: nodejs/npm konnten nicht installiert werden"
+  return 1
+}
+
 # Datei installieren und owner auf TARGET_USER setzen (je nach aktuellem User)
 install_as() {
   local src="$1"
@@ -222,7 +288,9 @@ done
 # ---------------------------------------------------------------------------
 # 2) Telegram-Plugin installieren (@grinev/opencode-telegram-bot, Binary
 #    'opencode-telegram'; idempotent – wird übersprungen, wenn das Binary
-#    bereits auf dem PATH des Ziel-Users verfügbar ist)
+#    bereits auf dem PATH des Ziel-Users verfügbar ist; falls nodejs/npm
+#    fehlen oder Node älter als ${NODE_MAJOR_MIN} ist, wird Node.js
+#    ${NODE_MAJOR_MIN} nachinstalliert (NodeSource, Fallback APT))
 # ---------------------------------------------------------------------------
 if [[ "$(id -un)" == "root" && "$(id -un)" != "${TARGET_USER}" ]]; then
   TELEGRAM_BIN="$(su -s /bin/bash "${TARGET_USER}" -c 'command -v opencode-telegram' 2>/dev/null || true)"
@@ -231,30 +299,36 @@ else
 fi
 if [[ -n "${TELEGRAM_BIN}" ]]; then
   log "Telegram-Plugin ist bereits installiert (${TELEGRAM_BIN}), Installation übersprungen"
-elif ! command -v npm >/dev/null 2>&1; then
-  log "WARNUNG: npm nicht verfügbar, Telegram-Plugin-Installation übersprungen"
 else
-  log "Installiere Telegram-Plugin (@grinev/opencode-telegram-bot) für '${TARGET_USER}' ..."
-  TELEGRAM_OK=0
-  if [[ "$(id -un)" == "root" ]]; then
-    # als root: in den geteilten globalen npm-Prefix installieren
-    if npm install -g "@grinev/opencode-telegram-bot@latest"; then
-      TELEGRAM_OK=1
-    fi
+  # node (>= ${NODE_MAJOR_MIN}) und npm für die Plugin-Installation
+  # sicherstellen (install_nodejs ist idempotent und überspringt die
+  # Installation, wenn node bereits neu genug ist)
+  install_nodejs || true
+  if ! command -v npm >/dev/null 2>&1; then
+    log "WARNUNG: npm nicht verfügbar, Telegram-Plugin-Installation übersprungen"
   else
-    if npm install -g "@grinev/opencode-telegram-bot@latest"; then
-      TELEGRAM_OK=1
-    elif command -v sudo >/dev/null 2>&1; then
-      # globaler npm-Prefix nicht schreibbar, erneut mit sudo versuchen
-      if sudo npm install -g "@grinev/opencode-telegram-bot@latest"; then
+    log "Installiere Telegram-Plugin (@grinev/opencode-telegram-bot) für '${TARGET_USER}' ..."
+    TELEGRAM_OK=0
+    if [[ "$(id -un)" == "root" ]]; then
+      # als root: in den geteilten globalen npm-Prefix installieren
+      if npm install -g "@grinev/opencode-telegram-bot@latest"; then
         TELEGRAM_OK=1
       fi
+    else
+      if npm install -g "@grinev/opencode-telegram-bot@latest"; then
+        TELEGRAM_OK=1
+      elif command -v sudo >/dev/null 2>&1; then
+        # globaler npm-Prefix nicht schreibbar, erneut mit sudo versuchen
+        if sudo npm install -g "@grinev/opencode-telegram-bot@latest"; then
+          TELEGRAM_OK=1
+        fi
+      fi
     fi
-  fi
-  if [[ "${TELEGRAM_OK}" -eq 1 ]]; then
-    log "Telegram-Plugin installiert"
-  else
-    log "WARNUNG: Telegram-Plugin konnte nicht installiert werden"
+    if [[ "${TELEGRAM_OK}" -eq 1 ]]; then
+      log "Telegram-Plugin installiert"
+    else
+      log "WARNUNG: Telegram-Plugin konnte nicht installiert werden"
+    fi
   fi
 fi
 
