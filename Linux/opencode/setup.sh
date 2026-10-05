@@ -5,7 +5,8 @@
 # Wird während dem Docker-Build-Prozess und als devcontainer-postCreateCommand
 # durch
 #     curl -fsSL <diese-URL> | bash
-#   ausgeführt. Installiert opencode v2, entfernt alle anderen vorhandenen
+#   ausgeführt. Installiert opencode v2, installiert das Telegram-Plugin
+#   (@grinev/opencode-telegram-bot), entfernt alle anderen vorhandenen
 #   opencode-Versionen (z. B. v1) und legt im Projekt-Workspace die
 #   Template-Dateien aus dem Ordner Linux/opencode an (AGENTS.md,
 #   config.json -> opencode.json, agents/*.md -> .opencode/agents/*.md;
@@ -219,7 +220,64 @@ for rc_file in "${TARGET_HOME}/.bashrc" "${TARGET_HOME}/.profile"; do
 done
 
 # ---------------------------------------------------------------------------
-# 2) Alle vorhandenen opencode-Versionen außer der aktuellen v2 (in
+# 2) Telegram-Plugin installieren (@grinev/opencode-telegram-bot, Binary
+#    'opencode-telegram'; idempotent – wird übersprungen, wenn das Binary
+#    bereits auf dem PATH des Ziel-Users verfügbar ist)
+# ---------------------------------------------------------------------------
+if [[ "$(id -un)" == "root" && "$(id -un)" != "${TARGET_USER}" ]]; then
+  TELEGRAM_BIN="$(su -s /bin/bash "${TARGET_USER}" -c 'command -v opencode-telegram' 2>/dev/null || true)"
+else
+  TELEGRAM_BIN="$(command -v opencode-telegram 2>/dev/null || true)"
+fi
+if [[ -n "${TELEGRAM_BIN}" ]]; then
+  log "Telegram-Plugin ist bereits installiert (${TELEGRAM_BIN}), Installation übersprungen"
+elif ! command -v npm >/dev/null 2>&1; then
+  log "WARNUNG: npm nicht verfügbar, Telegram-Plugin-Installation übersprungen"
+else
+  log "Installiere Telegram-Plugin (@grinev/opencode-telegram-bot) für '${TARGET_USER}' ..."
+  TELEGRAM_OK=0
+  if [[ "$(id -un)" == "root" ]]; then
+    # als root: in den geteilten globalen npm-Prefix installieren
+    if npm install -g "@grinev/opencode-telegram-bot@latest"; then
+      TELEGRAM_OK=1
+    fi
+  else
+    if npm install -g "@grinev/opencode-telegram-bot@latest"; then
+      TELEGRAM_OK=1
+    elif command -v sudo >/dev/null 2>&1; then
+      # globaler npm-Prefix nicht schreibbar, erneut mit sudo versuchen
+      if sudo npm install -g "@grinev/opencode-telegram-bot@latest"; then
+        TELEGRAM_OK=1
+      fi
+    fi
+  fi
+  if [[ "${TELEGRAM_OK}" -eq 1 ]]; then
+    log "Telegram-Plugin installiert"
+  else
+    log "WARNUNG: Telegram-Plugin konnte nicht installiert werden"
+  fi
+fi
+
+# Config-Verzeichnis anlegen (Owner: TARGET_USER)
+TELEGRAM_CONFIG_DIR="${TARGET_HOME}/.config/opencode-telegram-bot"
+if [[ -d "${TELEGRAM_CONFIG_DIR}" ]]; then
+  :
+elif [[ "$(id -un)" == "root" ]]; then
+  if install -d -m 0755 -o "${TARGET_USER}" -g "${TARGET_USER}" "${TELEGRAM_CONFIG_DIR}" 2>/dev/null; then
+    log "Config-Verzeichnis ${TELEGRAM_CONFIG_DIR} angelegt"
+  else
+    log "WARNUNG: Config-Verzeichnis ${TELEGRAM_CONFIG_DIR} konnte nicht angelegt werden"
+  fi
+else
+  if mkdir -p "${TELEGRAM_CONFIG_DIR}" 2>/dev/null; then
+    log "Config-Verzeichnis ${TELEGRAM_CONFIG_DIR} angelegt"
+  else
+    log "WARNUNG: Config-Verzeichnis ${TELEGRAM_CONFIG_DIR} konnte nicht angelegt werden"
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+# 3) Alle vorhandenen opencode-Versionen außer der aktuellen v2 (in
 #    ${OPENCODE_BIN}) deinstallieren (z. B. v1 oder ältere Instanzen, die
 #    über npm global, /usr/local/bin, ~/.local/bin, ... installiert wurden)
 # ---------------------------------------------------------------------------
@@ -340,7 +398,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 3) Projekt-Dateien in den Workspace legen (optional – schlägt nicht hart
+# 4) Projekt-Dateien in den Workspace legen (optional – schlägt nicht hart
 #    fehl, wird NIEMALS überschrieben)
 # ---------------------------------------------------------------------------
 if [[ -z "${WORKSPACE_DIR}" || ! -d "${WORKSPACE_DIR}" ]]; then
@@ -353,7 +411,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 4) opencode service starten (nur im postCreate-Fall; devcontainer setzt in
+# 5) opencode service starten (nur im postCreate-Fall; devcontainer setzt in
 #    der postCreateCommand VSCODE_*-Umgebungsvariablen, während dem
 #    Docker-Build fehlen diese)
 # ---------------------------------------------------------------------------
