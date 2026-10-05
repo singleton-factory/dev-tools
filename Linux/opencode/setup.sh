@@ -11,8 +11,10 @@
 #   Template-Dateien aus dem Ordner Linux/opencode an (AGENTS.md,
 #   config.json -> opencode.json, agents/*.md -> .opencode/agents/*.md;
 #   vorhandene Dateien werden NIEMALS überschrieben). Wird das Skript als
-#   postCreateCommand ausgeführt (erkannt an VSCODE_*-Umgebungsvariablen),
-#   startet es am Ende zusätzlich das opencode service.
+#   postCreateCommand ausgeführt (erkannt am ausführenden User: der
+#   Docker-Build (RUN) läuft als root, die postCreateCommand als
+#   Container-User (remoteUser, z. B. vscode)), startet es am Ende
+#   zusätzlich das opencode service.
 #
 # Hinweis: Parameterübergabe ist nicht möglich, daher sind die URLs unten
 # fest hinterlegt. Bei Änderungen diese Datei im Repository anpassen.
@@ -485,12 +487,13 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 5) opencode service starten (nur im postCreate-Fall; devcontainer setzt in
-#    der postCreateCommand VSCODE_*-Umgebungsvariablen, während dem
-#    Docker-Build fehlen diese)
+# 5) opencode service starten (nur im postCreate-Fall; der Docker-Build
+#    (RUN) läuft als root, die postCreateCommand als Container-User
+#    (remoteUser, z. B. vscode); wird die postCreateCommand als root
+#    ausgeführt (remoteUser: root), wird der Service nicht gestartet)
 # ---------------------------------------------------------------------------
-if env | grep -q '^VSCODE_'; then
-  log "postCreate erkannt, starte opencode service ..."
+if [[ "$(id -un)" != "root" ]]; then
+  log "postCreate erkannt (ausgeführt als '$(id -un)'), starte opencode service ..."
   if [[ "$(id -un)" == "root" && "$(id -un)" != "${TARGET_USER}" ]]; then
     su -s /bin/bash "${TARGET_USER}" -c "nohup '${OPENCODE_BIN}' service start >/dev/null 2>&1 &" || \
       log "WARNUNG: opencode service konnte nicht gestartet werden"
@@ -498,7 +501,7 @@ if env | grep -q '^VSCODE_'; then
     nohup "${OPENCODE_BIN}" service start >/dev/null 2>&1 &
   fi
 else
-  log "kein postCreate erkannt, opencode service wird nicht gestartet"
+  log "Docker-Build erkannt (root), opencode service wird nicht gestartet"
 fi
 
 log "Fertig."
