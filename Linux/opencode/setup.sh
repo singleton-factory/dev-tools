@@ -9,7 +9,9 @@
 #   opencode-Versionen (z. B. v1) und legt im Projekt-Workspace die
 #   Template-Dateien aus dem Ordner Linux/opencode an (AGENTS.md,
 #   config.json -> opencode.json, agents/*.md -> .opencode/agents/*.md;
-#   vorhandene Dateien werden NIEMALS überschrieben).
+#   vorhandene Dateien werden NIEMALS überschrieben). Wird das Skript als
+#   postCreateCommand ausgeführt (erkannt an VSCODE_*-Umgebungsvariablen),
+#   startet es am Ende zusätzlich das opencode service.
 #
 # Hinweis: Parameterübergabe ist nicht möglich, daher sind die URLs unten
 # fest hinterlegt. Bei Änderungen diese Datei im Repository anpassen.
@@ -348,6 +350,23 @@ else
   for entry in "${WORKSPACE_FILES[@]}"; do
     deploy_workspace_file "${entry%%|*}" "${entry#*|}"
   done
+fi
+
+# ---------------------------------------------------------------------------
+# 4) opencode service starten (nur im postCreate-Fall; devcontainer setzt in
+#    der postCreateCommand VSCODE_*-Umgebungsvariablen, während dem
+#    Docker-Build fehlen diese)
+# ---------------------------------------------------------------------------
+if env | grep -q '^VSCODE_'; then
+  log "postCreate erkannt, starte opencode service ..."
+  if [[ "$(id -un)" == "root" && "$(id -un)" != "${TARGET_USER}" ]]; then
+    su -s /bin/bash "${TARGET_USER}" -c "nohup '${OPENCODE_BIN}' service start >/dev/null 2>&1 &" || \
+      log "WARNUNG: opencode service konnte nicht gestartet werden"
+  else
+    nohup "${OPENCODE_BIN}" service start >/dev/null 2>&1 &
+  fi
+else
+  log "kein postCreate erkannt, opencode service wird nicht gestartet"
 fi
 
 log "Fertig."
