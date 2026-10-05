@@ -5,7 +5,8 @@
 # Wird während dem Docker-Build-Prozess und als devcontainer-postCreateCommand
 # durch
 #     curl -fsSL <diese-URL> | bash
-#   ausgeführt. Installiert opencode v2 und legt im Projekt-Workspace die
+#   ausgeführt. Installiert opencode v2, entfernt alle anderen vorhandenen
+#   opencode-Versionen (z. B. v1) und legt im Projekt-Workspace die
 #   Template-Dateien aus dem Ordner Linux/opencode an (AGENTS.md,
 #   config.json -> opencode.json, agents/*.md -> .opencode/agents/*.md;
 #   vorhandene Dateien werden NIEMALS überschrieben).
@@ -216,7 +217,128 @@ for rc_file in "${TARGET_HOME}/.bashrc" "${TARGET_HOME}/.profile"; do
 done
 
 # ---------------------------------------------------------------------------
-# 2) Projekt-Dateien in den Workspace legen (optional – schlägt nicht hart
+# 2) Alle vorhandenen opencode-Versionen außer der aktuellen v2 (in
+#    ${OPENCODE_BIN}) deinstallieren (z. B. v1 oder ältere Instanzen, die
+#    über npm global, /usr/local/bin, ~/.local/bin, ... installiert wurden)
+# ---------------------------------------------------------------------------
+
+# Prüfen, ob ein Pfad ein ausführbares opencode-Binary ist (gleiches Muster
+# wie der v2-Installer: '--version' ausführen und die Ausgabe auswerten)
+is_opencode_binary() {
+  local bin="$1" out
+  [[ -f "${bin}" && -x "${bin}" ]] || return 1
+  if command -v timeout >/dev/null 2>&1; then
+    out="$(timeout 10 "${bin}" --version 2>/dev/null || true)"
+  else
+    out="$("${bin}" --version 2>/dev/null || true)"
+  fi
+  [[ "${out}" == *opencode* ]] && return 0
+  [[ "${out}" =~ ^v?[0-9]+\.[0-9]+ ]] && return 0
+  return 1
+}
+
+# Alle opencode-Installationen finden, die NICHT die aktuelle v2
+# (${OPENCODE_BIN}) sind; gibt deren echte Pfade aus, je einer pro Zeile
+find_stale_opencode() {
+  local canonical
+  canonical="$(readlink -f "${OPENCODE_BIN}" 2>/dev/null || printf '%s' "${OPENCODE_BIN}")"
+
+  local candidates=()
+  local line found
+  # alle 'opencode' auf dem PATH des Ziel-Users (Login-Shell)
+  if [[ "$(id -un)" == "root" && "$(id -un)" != "${TARGET_USER}" ]]; then
+    found="$(su - -s /bin/bash "${TARGET_USER}" -c 'type -a opencode 2>/dev/null' || true)"
+  else
+    found="$(type -a opencode 2>/dev/null || true)"
+  fi
+  while IFS= read -r line; do
+    line="${line#*is }"
+    [[ "${line}" == /* && -e "${line}" ]] || continue
+    candidates+=("${line}")
+  done <<< "${found}"
+
+  # übliche feste Installationsorte
+  candidates+=(
+    "${OPENCODE_BIN}"
+    "${TARGET_HOME}/.local/bin/opencode"
+    "${TARGET_HOME}/.bun/bin/opencode"
+    "/usr/local/bin/opencode"
+    "/usr/bin/opencode"
+  )
+  # npm-Globalinstallation (z. B. v1 via 'npm install -g opencode-ai')
+  local npm_prefix
+  npm_prefix="$(npm prefix -g 2>/dev/null || true)"
+  if [[ -n "${npm_prefix}" ]]; then
+    candidates+=("${npm_prefix}/bin/opencode")
+  fi
+
+  local path real_path seen=" "
+  for path in "${candidates[@]}"; do
+    [[ -e "${path}" ]] || continue
+    real_path="$(readlink -f "${path}" 2>/dev/null || printf '%s' "${path}")"
+    [[ -f "${real_path}" ]] || continue
+    # die aktuelle v2-Installation behalten
+    [[ "${real_path}" == "${canonical}" ]] && continue
+    [[ "${seen}" == *" ${real_path} "* ]] && continue
+    is_opencode_binary "${real_path}" || continue
+    seen+=" ${real_path} "
+    printf '%s\n' "${real_path}"
+  done
+  return 0
+}
+
+# Eine erkannte Installation entfernen (bei npm-Globalinstallationen das
+# gesamte Paket-Verzeichnis); schlägt weich fehl (Warnung)
+remove_stale_opencode() {
+  local path="$1"
+  local targets=("${path}")
+  local npm_prefix pkg target ok binlink binlink_target
+  npm_prefix="$(npm prefix -g 2>/dev/null || true)"
+  if [[ -n "${npm_prefix}" && "${path}" == "${npm_prefix}"/lib/node_modules/* ]]; then
+    # .../lib/node_modules/<paket>/<rest> -> .../lib/node_modules/<paket>
+    pkg="${path#"${npm_prefix}"/lib/node_modules/}"
+    pkg="${npm_prefix}/lib/node_modules/${pkg%%/*}"
+    [[ "${pkg}" == "${path}" ]] || targets+=("${pkg}")
+    # zugehörige Bin-Link im npm-Prefix entfernen
+    binlink="${npm_prefix}/bin/opencode"
+    if [[ "${binlink}" != "${path}" && -e "${binlink}" ]]; then
+      binlink_target="$(readlink -f "${binlink}" 2>/dev/null || true)"
+      [[ "${binlink_target}" == "${pkg}"/* ]] && targets+=("${binlink}")
+    fi
+  fi
+
+  ok=1
+  for target in "${targets[@]}"; do
+    if [[ "$(id -un)" == "root" || -w "$(dirname "${target}")" ]]; then
+      rm -rf -- "${target}" || ok=0
+    elif command -v sudo >/dev/null 2>&1; then
+      local sudo_bin
+      sudo_bin="$(command -v sudo)"
+      "${sudo_bin}" rm -rf -- "${target}" 2>/dev/null || ok=0
+    else
+      ok=0
+    fi
+  done
+  if [[ "${ok}" -eq 1 ]]; then
+    log "veraltete opencode-Installation entfernt: ${path}"
+  else
+    log "WARNUNG: ${path} konnte nicht entfernt werden"
+  fi
+  return 0
+}
+
+STALE_OPENCODES="$(find_stale_opencode)"
+if [[ -n "${STALE_OPENCODES}" ]]; then
+  while IFS= read -r STALE_PATH; do
+    [[ -n "${STALE_PATH}" ]] || continue
+    remove_stale_opencode "${STALE_PATH}"
+  done <<< "${STALE_OPENCODES}"
+else
+  log "keine weiteren opencode-Installationen gefunden"
+fi
+
+# ---------------------------------------------------------------------------
+# 3) Projekt-Dateien in den Workspace legen (optional – schlägt nicht hart
 #    fehl, wird NIEMALS überschrieben)
 # ---------------------------------------------------------------------------
 if [[ -z "${WORKSPACE_DIR}" || ! -d "${WORKSPACE_DIR}" ]]; then
