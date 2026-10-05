@@ -9,8 +9,9 @@
 #   (@grinev/opencode-telegram-bot), entfernt alle anderen vorhandenen
 #   opencode-Versionen (z. B. v1) und legt im Projekt-Workspace die
 #   Template-Dateien aus dem Ordner Linux/opencode an (AGENTS.md,
-#   config.json -> opencode.json, agents/*.md -> .opencode/agents/*.md;
-#   vorhandene Dateien werden NIEMALS überschrieben). Wird das Skript als
+#   repo-config.json -> opencode.json, agents/*.md -> .opencode/agents/
+#   *.md) sowie global-config.json -> ~/.config/opencode/opencode.json;
+#   vorhandene Dateien werden NIEMALS überschrieben. Wird das Skript als
 #   postCreateCommand ausgeführt (erkannt am ausführenden User: der
 #   Docker-Build (RUN) läuft als root, die postCreateCommand als
 #   Container-User (remoteUser, z. B. vscode)), startet es am Ende
@@ -38,7 +39,7 @@ OPENCODE_INSTALL_URL="https://opencode.ai/v2/install"
 # werden (Format: "<Quellpfad im Repo>|<Zielpfad relativ zum Workspace>"):
 WORKSPACE_FILES=(
   "Linux/opencode/AGENTS.md|AGENTS.md"
-  "Linux/opencode/config.json|opencode.json"
+  "Linux/opencode/repo-config.json|opencode.json"
   "Linux/opencode/agents/explorer.md|.opencode/agents/explorer.md"
   "Linux/opencode/agents/verifier.md|.opencode/agents/verifier.md"
   "Linux/opencode/agents/reviewer.md|.opencode/agents/reviewer.md"
@@ -182,22 +183,22 @@ install_as() {
   fi
 }
 
-# Eine Template-Datei aus Linux/opencode in den Workspace legen; schlägt
-# nicht hart fehl und wird NIEMALS überschrieben
-deploy_workspace_file() {
+# Eine Template-Datei aus Linux/opencode an einen (absoluten) Zielort legen;
+# schlägt nicht hart fehl und wird NIEMALS überschrieben
+deploy_file() {
   local src="$1"
-  local rel="$2"
-  local dest="${WORKSPACE_DIR}/${rel}"
-  local destdir tmp writable
+  local dest="$2"
+  local destdir tmp writable label
+  label="$(basename "${src}")"
   destdir="$(dirname "${dest}")"
 
   if [[ -e "${dest}" ]]; then
-    log "${rel} existiert bereits (${dest}), Download übersprungen"
+    log "${label} existiert bereits (${dest}), Download übersprungen"
     return 0
   fi
 
   if ! tmp="$(mktemp)"; then
-    log "WARNUNG: mktemp fehlgeschlagen, ${rel} übersprungen"
+    log "WARNUNG: mktemp fehlgeschlagen, ${label} übersprungen"
     return 0
   fi
   if ! download "${RAW_BASE}/${src}" "${tmp}"; then
@@ -218,9 +219,9 @@ deploy_workspace_file() {
 
   if [[ "${writable}" -eq 1 ]]; then
     if install_as "${tmp}" "${dest}"; then
-      log "${rel} nach ${dest} installiert"
+      log "${label} nach ${dest} installiert"
     else
-      log "WARNUNG: ${rel} konnte nicht installiert werden (weiterhin ohne Fehler)"
+      log "WARNUNG: ${label} konnte nicht installiert werden (weiterhin ohne Fehler)"
     fi
   elif command -v sudo >/dev/null 2>&1; then
     log "${destdir} nicht schreibbar, versuche mit sudo ..."
@@ -231,12 +232,12 @@ deploy_workspace_file() {
            "${destdir}" 2>/dev/null; } && \
        "${sudo_bin}" install -m 0644 -o "${TARGET_USER}" -g "${TARGET_USER}" \
          "${tmp}" "${dest}" 2>/dev/null; then
-      log "${rel} (via sudo) nach ${dest} installiert"
+      log "${label} (via sudo) nach ${dest} installiert"
     else
-      log "WARNUNG: ${rel} konnte nicht installiert werden, auch nicht mit sudo"
+      log "WARNUNG: ${label} konnte nicht installiert werden, auch nicht mit sudo"
     fi
   else
-    log "HINWEIS: ${destdir} nicht schreibbar und sudo nicht verfügbar, ${rel} übersprungen"
+    log "HINWEIS: ${destdir} nicht schreibbar und sudo nicht verfügbar, ${label} übersprungen"
   fi
   rm -f "${tmp}"
   return 0
@@ -474,17 +475,23 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 4) Projekt-Dateien in den Workspace legen (optional – schlägt nicht hart
-#    fehl, wird NIEMALS überschrieben)
+# 4) Template-Dateien aus dem Repo legen (optional – schlagen nicht hart
+#    fehl, werden NIEMALS überschrieben)
 # ---------------------------------------------------------------------------
+# 4a) Projekt-Dateien in den Workspace (falls ein Workspace existiert)
 if [[ -z "${WORKSPACE_DIR}" || ! -d "${WORKSPACE_DIR}" ]]; then
   log "HINWEIS: kein Workspace-Verzeichnis gefunden, Workspace-Installation übersprungen"
 else
   log "Workspace: ${WORKSPACE_DIR}"
   for entry in "${WORKSPACE_FILES[@]}"; do
-    deploy_workspace_file "${entry%%|*}" "${entry#*|}"
+    deploy_file "${entry%%|*}" "${WORKSPACE_DIR}/${entry#*|}"
   done
 fi
+
+# 4b) Globale opencode-Config nach ~/.config/opencode/opencode.json
+#     (unabhängig vom Workspace; wird NIEMALS überschrieben)
+GLOBAL_CONFIG_DEST="${TARGET_HOME}/.config/opencode/opencode.json"
+deploy_file "Linux/opencode/global-config.json" "${GLOBAL_CONFIG_DEST}"
 
 # ---------------------------------------------------------------------------
 # 5) opencode service starten (nur im postCreate-Fall; der Docker-Build

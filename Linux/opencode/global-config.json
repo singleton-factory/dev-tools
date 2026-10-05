@@ -1,0 +1,25 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "lsp": true,
+  "model": "llama/qwen3.8-27b",
+  "provider": {
+    "llama": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "llama.cpp (Proxy)",
+
+      "options": {
+        "baseURL": "http://ai-proxy.lan:9931/v1"
+      },
+
+      "models": {
+        "qwen3.8-27b": {
+          "name": "Qwen 3.8 27B",
+          "limit": {
+            "context": 131072,
+            "output": 8192
+          }
+        }
+      }
+    }
+  }
+}
