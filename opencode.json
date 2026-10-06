@@ -1,14 +1,15 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "lsp": true,
-  "model": "llama/qwen3.8-27b",
+  "model": "ai-proxy/qwen3.8-27b",
   "provider": {
-    "llama": {
+    "ai-proxy": {
       "npm": "@ai-sdk/openai-compatible",
-      "name": "llama.cpp (Proxy)",
+      "name": "Bubbles AI Proxy",
 
       "options": {
-        "baseURL": "http://ai-proxy.lan:9931/v1"
+        "baseURL": "http://ai-proxy.lan:9931/v1",
+        "apiKey": "sk-5kDw8qGdgwLcUrHBMUkO_g"
       },
 
       "models": {
@@ -18,15 +19,36 @@
             "context": 131072,
             "output": 32768
           }
+        },
+        "qwen3.8-27b-parallel": {
+          "name": "Qwen 3.8 27B Parallel",
+          "limit": {
+            "context": 57344,
+            "output": 8192
+          }
         }
       }
     }
+  },
+  "experimental": {
+    "policies": [
+      {
+        "action": "provider.use",
+        "resource": "*",
+        "effect": "deny"
+      },
+      {
+        "action": "provider.use",
+        "resource": "ai-proxy",
+        "effect": "allow"
+      }
+    ]
   },
   "agent": {
     "explorer": {
       "description": "Read-only repository analyst. Use before substantial or unclear changes to locate relevant code, call sites, tests, constraints and likely root causes.",
       "mode": "subagent",
-      "model": "llama/qwen3.8-27b",
+      "model": "ai-proxy/qwen3.8-27b",
       "temperature": 0.1,
       "prompt": "{file:./.opencode/agents/explorer.md}",
       "tools": {
@@ -34,15 +56,14 @@
         "edit": false
       },
       "permission": {
-        "edit": "deny",
-        "webfetch": "deny"
+        "edit": "deny"
       }
     },
 
     "verifier": {
       "description": "Read-only verification agent. Use after implementation to run targeted tests, builds, linters and inspect behavior for regressions. Never modify files.",
       "mode": "subagent",
-      "model": "llama/qwen3.8-27b",
+      "model": "ai-proxy/qwen3.8-27b",
       "temperature": 0.1,
       "prompt": "{file:./.opencode/agents/verifier.md}",
       "tools": {
@@ -50,15 +71,14 @@
         "edit": false
       },
       "permission": {
-        "edit": "deny",
-        "webfetch": "deny"
+        "edit": "deny"
       }
     },
 
     "reviewer": {
       "description": "Independent read-only code reviewer. Use after implementation and verification to inspect the git diff for correctness, regressions, edge cases, security and maintainability.",
       "mode": "subagent",
-      "model": "llama/qwen3.8-27b",
+      "model": "ai-proxy/qwen3.8-27b",
       "temperature": 0.1,
       "prompt": "{file:./.opencode/agents/reviewer.md}",
       "tools": {
@@ -66,8 +86,7 @@
         "edit": false
       },
       "permission": {
-        "edit": "deny",
-        "webfetch": "deny"
+        "edit": "deny"
       }
     }
   }

@@ -5,7 +5,7 @@
     "explorer": {
       "description": "Read-only repository analyst. Use before substantial or unclear changes to locate relevant code, call sites, tests, constraints and likely root causes.",
       "mode": "subagent",
-      "model": "llama/qwen3.8-27b",
+      "model": "ai-proxy/qwen3.8-27b",
       "temperature": 0.1,
       "prompt": "{file:./.opencode/agents/explorer.md}",
       "tools": {
@@ -21,7 +21,7 @@
     "verifier": {
       "description": "Read-only verification agent. Use after implementation to run targeted tests, builds, linters and inspect behavior for regressions. Never modify files.",
       "mode": "subagent",
-      "model": "llama/qwen3.8-27b",
+      "model": "ai-proxy/qwen3.8-27b",
       "temperature": 0.1,
       "prompt": "{file:./.opencode/agents/verifier.md}",
       "tools": {
@@ -37,7 +37,7 @@
     "reviewer": {
       "description": "Independent read-only code reviewer. Use after implementation and verification to inspect the git diff for correctness, regressions, edge cases, security and maintainability.",
       "mode": "subagent",
-      "model": "llama/qwen3.8-27b",
+      "model": "ai-proxy/qwen3.8-27b",
       "temperature": 0.1,
       "prompt": "{file:./.opencode/agents/reviewer.md}",
       "tools": {
