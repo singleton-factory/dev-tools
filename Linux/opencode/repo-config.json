@@ -1,11 +1,18 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "lsp": true,
+  "provider": {
+    "ai-proxy": {
+      "options": {
+        "apiKey": "sk-5kDw8qGdgwLcUrHBMUkO_g"
+      }
+    }
+  },
   "agent": {
     "explorer": {
       "description": "Read-only repository analyst. Use before substantial or unclear changes to locate relevant code, call sites, tests, constraints and likely root causes.",
       "mode": "subagent",
-      "model": "ai-proxy/qwen3.8-27b",
+      "model": "custom_openai/qwen3.8-flash-next-parallel",
       "temperature": 0.1,
       "prompt": "{file:./.opencode/agents/explorer.md}",
       "tools": {
@@ -21,7 +28,7 @@
     "verifier": {
       "description": "Read-only verification agent. Use after implementation to run targeted tests, builds, linters and inspect behavior for regressions. Never modify files.",
       "mode": "subagent",
-      "model": "ai-proxy/qwen3.8-27b",
+      "model": "custom_openai/qwen3.8-flash-next-parallel",
       "temperature": 0.1,
       "prompt": "{file:./.opencode/agents/verifier.md}",
       "tools": {
@@ -37,7 +44,7 @@
     "reviewer": {
       "description": "Independent read-only code reviewer. Use after implementation and verification to inspect the git diff for correctness, regressions, edge cases, security and maintainability.",
       "mode": "subagent",
-      "model": "ai-proxy/qwen3.8-27b",
+      "model": "custom_openai/qwen3.8-flash-next-parallel",
       "temperature": 0.1,
       "prompt": "{file:./.opencode/agents/reviewer.md}",
       "tools": {
