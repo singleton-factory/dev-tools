@@ -2,15 +2,13 @@
   "$schema": "https://opencode.ai/config.json",
   "lsp": true,
   "model": "custom_openai/qwen3.8-flash-next",
-  "provider": {
-    "ai-proxy": {
-      "npm": "@ai-sdk/openai-compatible",
+  "providers": {
+    "custom_openai": {
       "name": "Bubbles AI Proxy",
-
-      "options": {
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
         "baseURL": "http://ai-proxy.lan:9931/v1"
       },
-
       "models": {
         "qwen3.8-flash-next": {
           "name": "Qwen 3.8 Flash Next",
@@ -20,6 +18,7 @@
           }
         },
         "qwen3.8-flash-next-parallel": {
+          "modelID": "qwen3.8-flash-next",
           "name": "Qwen 3.8 Flash Next Parallel",
           "limit": {
             "context": 65536,
@@ -38,7 +37,7 @@
       },
       {
         "action": "provider.use",
-        "resource": "ai-proxy",
+        "resource": "custom_openai",
         "effect": "allow"
       }
     ]
