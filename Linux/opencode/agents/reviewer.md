@@ -1,7 +1,7 @@
 ---
 description: Independent read-only review of a completed code change, including tests, correctness, regressions, and security.
 mode: subagent
-model: custom_openai/qwen3.8-flash-next-parallel
+model: custom_openai/qwen3.8-flash-next-reviewer
 permissions:
   - action: edit
     resource: "*"

@@ -1,7 +1,7 @@
 ---
 description: Implements bounded repository changes, writes regression tests, and runs relevant checks. The only code-writing subagent.
 mode: subagent
-model: custom_openai/qwen3.8-flash-next-parallel
+model: custom_openai/qwen3.8-flash-next-implementer
 permissions:
   - action: edit
     resource: "*"
