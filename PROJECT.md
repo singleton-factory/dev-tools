@@ -1,0 +1,62 @@
+# Project
+
+## Purpose and scope
+`dev-tools` holds shell scripts and templates for our dev and CI/CD processes.
+Components (see `README.md` for the full list):
+- `Linux/setHetznerMirror.sh` — detects a Hetzner datacenter by probing the Hetzner apt mirror and sets it.
+- `Linux/setupDockerLXC.sh` — runs inside a Proxmox LXC (fuse, keyctl, nesting enabled); installs FuseFS and docker-ce.
+- `Linux/setupCodex.sh` — host availability checks / package setup for the `ai-proxy.lan` proxy.
+- `Linux/opencode/` — the opencode v2 installer (`setup.sh`) plus the templates it deploys
+  (`AGENTS.md`, `global-config.json`, `repo-config.json`, `agents/*.md`).
+- `.devcontainer/` — Debian base container that runs the scripts through `curl | bash`.
+
+## Architecture and key components
+- Scripts are executed remotely as `curl -fsSL <raw.githubusercontent.com URL> | bash`; there is **no local
+  checkout at runtime**, so anything a script needs from the repository must be fetched over the network
+  (directory listings via the GitHub contents API, `API_BASE` in `setup.sh`).
+- `Linux/opencode/setup.sh` installs opencode v2 + the `@grinev/opencode-telegram-bot` plugin, removes other
+  opencode versions, ensures Node >= 22, and deploys templates into the project workspace:
+  `AGENTS.md`, `repo-config.json -> opencode.json`, every file of `Linux/opencode/agents/ ->
+  <workspace>/.opencode/agents/<filename>`, `global-config.json -> ~/.config/opencode/opencode.json`.
+  It starts the opencode service when run as the devcontainer `postCreateCommand` (detected by the executing
+  user: Docker `RUN` is root, postCreate is `remoteUser`, e.g. `vscode`).
+- `Linux/opencode/agents/*.md` is the source of truth for the agent definitions; `.opencode/agents/*.md` is the
+  deployed copy in this workspace and must stay identical to it.
+- Subagent roles: `implementer` (code) and `reviewer` (read-only). `explorer` and `verifier` were removed.
+
+## Development environment and commands
+- Container: `.devcontainer/devcontainer.json` (Debian Bookworm base, `remoteUser: vscode`),
+  `postCreateCommand` fetches `Linux/opencode/setup.sh` from the pushed `main` branch.
+- Tests: `bash Linux/opencode/tests/test_setup.sh` — plain bash, no network, no new dependencies; it extracts
+  the actual functions/variables from `setup.sh` (awk/sed) and stubs `curl`. Run it after changing `setup.sh`.
+- Syntax check: `bash -n <script>`. `shellcheck` is not installed in this container.
+- Installer parameters cannot be passed (script is piped to bash), so repo owner/name/ref and URLs are fixed
+  constants at the top of `setup.sh`; change them in the file itself.
+
+## Engineering rules and conventions
+- Comments in the shell scripts are in **German**; keep that style and the existing indentation.
+- Existing helper abstractions (`download()`, `deploy_file()`, `log()`) are reused; `deploy_file()` never
+  overwrites an existing destination file — that is a deliberate, lasting behaviour.
+- Failures in optional downloads/listing are **soft** (warning + skip, `return 0`), never a hard abort, even
+  under `set -euo pipefail`; diagnostics of functions whose stdout is parsed go to stderr.
+- Commit messages: short, lowercase, imperative/descriptive single line (see `git log`).
+
+## Interfaces, data, and security constraints
+- The installer reads the **pushed** `main` branch; local changes only take effect after commit + push.
+- GitHub contents API is unauthenticated (60 requests/hour per IP); if it is unreachable the agent files are
+  skipped with a warning — there is intentionally no hardcoded fallback list of agent names.
+- Known parser limitation (no-jq fallback in `setup.sh`): filenames containing `}{` or escaped quotes are not
+  recognized.
+- `opencode.json` contains a provider API key. Never copy credentials into `PROJECT.md`, `DEVSTATE.md`,
+  comments, or test fixtures.
+
+## Lasting decisions and constraints
+- Documentation split: `PROJECT.md` = durable project facts and rules, `DEVSTATE.md` = current handoff state.
+- The primary agent owns `PROJECT.md`/`DEVSTATE.md`; implementer and reviewer read them but do not edit them,
+  and never commit or push.
+- Commits and pushes require explicit user instructions.
+
+## To confirm
+- Whether `.opencode/agents/` should be kept in the repo long term (it duplicates `Linux/opencode/agents/`) or
+  only exists as the deployed workspace copy.
+- Whether the target environment is only Debian Bookworm or other distributions are also supported.
