@@ -14,7 +14,8 @@
 - `Linux/opencode/tests/test_setup.sh`: 12 groups; extraction fails loudly when a function/section is missing.
 - Reviewer PASS; its only finding (a misleading `list_opencode_dir` comment) is fixed.
 - Commits created: `95c05f9` (setup.sh + tests), `62a3e9f` (AGENTS.md rework), `91fc828` (context 131072 ->
-  196608 in `opencode.json` and `Linux/opencode/global-config.json`), plus this documentation update.
+  196608 in `opencode.json` and `Linux/opencode/global-config.json`), `7c01947` (docs), `97ce319` (agent model
+  `qwen3.8-flash-next-parallel` -> dedicated `...-implementer` / `...-reviewer` in both agent-file copies).
 - Nothing pushed: `origin/main` is still `9f157b9`, so the new installer behavior is not yet live in devcontainers
   (the installer reads the pushed `main`).
 - `AGENTS.md` and `Linux/opencode/AGENTS.md` are identical again; `.opencode/agents/*` matches
