@@ -21,7 +21,7 @@
           "modelID": "qwen3.8-flash-next",
           "name": "Qwen 3.8 Implementer",
           "limit": {
-            "context": 131072,
+            "context": 196608,
             "output": 16384
           }
         },
