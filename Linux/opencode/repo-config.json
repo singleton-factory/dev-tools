@@ -12,18 +12,43 @@
   "permissions": [
     {
       "action": "shell",
-      "resource": "git push *",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "edit",
+      "resource": "*",
+      "effect": "allow"
+    },
+    {
+      "action": "subagent",
+      "resource": "implementer",
+      "effect": "allow"
+    },
+    {
+      "action": "subagent",
+      "resource": "reviewer",
+      "effect": "allow"
+    },
+    {
+      "action": "shell",
+      "resource": "git push*",
       "effect": "deny"
     },
     {
       "action": "shell",
-      "resource": "git push",
+      "resource": "git commit*",
       "effect": "deny"
     },
     {
-      "action": "subagent",
-      "resource": "*",
-      "effect": "allow"
+      "action": "shell",
+      "resource": "git reset --hard*",
+      "effect": "deny"
+    },
+    {
+      "action": "shell",
+      "resource": "git clean -f*",
+      "effect": "deny"
     }
   ]
 }

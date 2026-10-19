@@ -11,18 +11,26 @@
       },
       "models": {
         "qwen3.8-flash-next": {
-          "name": "Qwen 3.8 Flash Next",
-          "limit": {
-            "context": 262144,
-            "output": 32768
-          }
-        },
-        "qwen3.8-flash-next-parallel": {
-          "modelID": "qwen3.8-flash-next",
-          "name": "Qwen 3.8 Flash Next Parallel",
+          "name": "Qwen 3.8 Main",
           "limit": {
             "context": 65536,
             "output": 12288
+          }
+        },
+        "qwen3.8-flash-next-implementer": {
+          "modelID": "qwen3.8-flash-next",
+          "name": "Qwen 3.8 Implementer",
+          "limit": {
+            "context": 131072,
+            "output": 16384
+          }
+        },
+        "qwen3.8-flash-next-reviewer": {
+          "modelID": "qwen3.8-flash-next",
+          "name": "Qwen 3.8 Reviewer",
+          "limit": {
+            "context": 65536,
+            "output": 8192
           }
         }
       }

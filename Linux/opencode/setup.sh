@@ -9,8 +9,11 @@
 #   (@grinev/opencode-telegram-bot), entfernt alle anderen vorhandenen
 #   opencode-Versionen (z. B. v1) und legt im Projekt-Workspace die
 #   Template-Dateien aus dem Ordner Linux/opencode an (AGENTS.md,
-#   repo-config.json -> opencode.json, agents/*.md -> .opencode/agents/
-#   *.md) sowie global-config.json -> ~/.config/opencode/opencode.json;
+#   repo-config.json -> opencode.json, alle Dateien aus
+#   Linux/opencode/agents -> .opencode/agents/<dateiname>; diese Liste wird
+#   dynamisch über die GitHub-Contents-API ermittelt, da das Skript per
+#   'curl | bash' ohne lokalen Checkout ausgeführt wird) sowie
+#   global-config.json -> ~/.config/opencode/opencode.json;
 #   vorhandene Dateien werden NIEMALS überschrieben. Wird das Skript als
 #   postCreateCommand ausgeführt (erkannt am ausführenden User: der
 #   Docker-Build (RUN) läuft als root, die postCreateCommand als
@@ -31,18 +34,18 @@ REPO_NAME="dev-tools"
 REPO_REF="main"
 
 RAW_BASE="https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/${REPO_REF}"
+API_BASE="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents"
 # v2-Installer (installiert die Version aus dem v2-Channel, z. B. 2.0.x;
 # der v1-Installer würde weiterhin nur die letzten v1-Releases liefern)
 OPENCODE_INSTALL_URL="https://opencode.ai/v2/install"
 
 # Template-Dateien, die aus Linux/opencode in den Projekt-Workspace kopiert
-# werden (Format: "<Quellpfad im Repo>|<Zielpfad relativ zum Workspace>"):
+# werden (Format: "<Quellpfad im Repo>|<Zielpfad relativ zum Workspace>");
+# die Agent-Dateien werden unten dynamisch ergänzt (siehe
+# agent_workspace_entries), einzelne Agent-Namen sind nicht hinterlegt:
 WORKSPACE_FILES=(
   "Linux/opencode/AGENTS.md|AGENTS.md"
   "Linux/opencode/repo-config.json|opencode.json"
-  "Linux/opencode/agents/explorer.md|.opencode/agents/explorer.md"
-  "Linux/opencode/agents/verifier.md|.opencode/agents/verifier.md"
-  "Linux/opencode/agents/reviewer.md|.opencode/agents/reviewer.md"
 )
 
 # Ziel-User und Pfade (Standard: vscode-User, wie im devcontainer)
@@ -104,6 +107,57 @@ download() {
     rm -f "${dest}"
     return 1
   fi
+}
+
+# Reguläre Dateien eines Repo-Ordners über die GitHub-Contents-API auflisten
+# (je Dateiname eine Zeile auf Standardausgang, ohne Rekursion in Unterordner);
+# das Skript läuft per 'curl | bash' ohne lokalen Checkout, die Liste kann
+# daher nicht aus dem Repository gelesen werden. Meldungen gehen auf
+# Standardfehler, damit die Ausgabe ausgewertet werden kann. Schlägt weich
+# fehl (Warnung, leere Ausgabe), da die Agent-Dateien optional sind.
+list_repo_files() {
+  local path="$1" tmp
+  if ! tmp="$(mktemp)"; then
+    log "WARNUNG: mktemp fehlgeschlagen, ${path} übersprungen" >&2
+    return 0
+  fi
+  # download() meldet auf Standardausgang, hier wird aber Standardausgang für
+  # die Dateinamen benutzt, daher die Meldungen umleiten
+  if ! download "${API_BASE}/${path}?ref=${REPO_REF}" "${tmp}" >&2; then
+    rm -f "${tmp}"
+    return 0
+  fi
+
+  if command -v jq >/dev/null 2>&1; then
+    if ! jq -r '.[] | select(.type == "file") | .name' "${tmp}"; then
+      log "WARNUNG: JSON für ${path} konnte nicht gelesen werden" >&2
+    fi
+  else
+    # Fallback ohne jq (jq ist im Container oft nicht installiert): Antwort in
+    # Objekte aufteilen und nur reguläre Dateien ausgeben; funktioniert für
+    # die kompakte und die pretty-printed Form der API-Antwort. Begrenzung des
+    # einfachen Parsers: Dateinamen mit "}{" oder escapeden Anführungszeichen
+    # werden nicht erkannt.
+    tr -d '\n' < "${tmp}" \
+      | sed 's/}[[:space:]]*,*[[:space:]]*{/}\n{/g' \
+      | grep '"type":[[:space:]]*"file"' \
+      | grep -oE '"name":[[:space:]]*"[^"]*"' \
+      | sed 's/^"name":[[:space:]]*"//; s/"$//' || true
+  fi
+  rm -f "${tmp}"
+  return 0
+}
+
+# Workspace-Einträge für alle Agent-Dateien aus Linux/opencode/agents im
+# Format "<Quellpfad im Repo>|<Zielpfad relativ zum Workspace>", je einer pro
+# Zeile; Agent-Namen werden nicht einzeln aufgeführt
+agent_workspace_entries() {
+  local dir="Linux/opencode/agents" name
+  while IFS= read -r name; do
+    [[ -n "${name}" ]] || continue
+    printf '%s/%s|%s/%s\n' "${dir}" "${name}" ".opencode/agents" "${name}"
+  done < <(list_repo_files "${dir}")
+  return 0
 }
 
 # Minimalversion (Major) von Node.js, die verfügbar sein muss
@@ -491,6 +545,11 @@ if [[ -z "${WORKSPACE_DIR}" || ! -d "${WORKSPACE_DIR}" ]]; then
   log "HINWEIS: kein Workspace-Verzeichnis gefunden, Workspace-Installation übersprungen"
 else
   log "Workspace: ${WORKSPACE_DIR}"
+  # Agent-Dateien dynamisch ergänzen (Liste kommt aus der GitHub-API)
+  while IFS= read -r entry; do
+    [[ -n "${entry}" ]] || continue
+    WORKSPACE_FILES+=("${entry}")
+  done <<< "$(agent_workspace_entries)"
   for entry in "${WORKSPACE_FILES[@]}"; do
     deploy_file "${entry%%|*}" "${WORKSPACE_DIR}/${entry#*|}"
   done
