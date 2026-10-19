@@ -15,9 +15,13 @@ Components (see `README.md` for the full list):
   checkout at runtime**, so anything a script needs from the repository must be fetched over the network
   (directory listings via the GitHub contents API, `API_BASE` in `setup.sh`).
 - `Linux/opencode/setup.sh` installs opencode v2 + the `@grinev/opencode-telegram-bot` plugin, removes other
-  opencode versions, ensures Node >= 22, and deploys templates into the project workspace:
-  `AGENTS.md`, `repo-config.json -> opencode.json`, every file of `Linux/opencode/agents/ ->
-  <workspace>/.opencode/agents/<filename>`, `global-config.json -> ~/.config/opencode/opencode.json`.
+  opencode versions, ensures Node >= 22, and deploys templates into the project workspace. Which files exist is
+  resolved **only** from the `Linux/opencode/` contents-API folder listing (one call per folder per run, no
+  individual filenames hardcoded): regular files of that folder -> same name in the workspace,
+  `repo-config.json -> opencode.json`, every file of `Linux/opencode/agents/ ->
+  <workspace>/.opencode/agents/<filename>`, `*.sh` -> skipped, the top-level `global-*.json ->
+  ~/.config/opencode/opencode.json`; directories are never deployed. Existing files are never overwritten. Only
+  the script's own raw URL and the opencode installer URL are fixed paths.
   It starts the opencode service when run as the devcontainer `postCreateCommand` (detected by the executing
   user: Docker `RUN` is root, postCreate is `remoteUser`, e.g. `vscode`).
 - `Linux/opencode/agents/*.md` is the source of truth for the agent definitions; `.opencode/agents/*.md` is the
@@ -30,6 +34,9 @@ Components (see `README.md` for the full list):
   `postCreateCommand` fetches `Linux/opencode/setup.sh` from the pushed `main` branch.
 - Tests: `bash Linux/opencode/tests/test_setup.sh` — plain bash, no network, no new dependencies; it extracts
   the actual functions/variables from `setup.sh` (awk/sed) and stubs `curl`. Run it after changing `setup.sh`.
+  Regression check against an older version: `SETUP_SH=<path> bash Linux/opencode/tests/test_setup.sh`.
+  The jq-labelled test groups use the real `jq` when it is installed (jq 1.7 is installed in this container);
+  without jq they silently re-test the fallback parser, so run them where jq is available.
 - Syntax check: `bash -n <script>`. `shellcheck` is not installed in this container.
 - Installer parameters cannot be passed (script is piped to bash), so repo owner/name/ref and URLs are fixed
   constants at the top of `setup.sh`; change them in the file itself.
@@ -44,8 +51,10 @@ Components (see `README.md` for the full list):
 
 ## Interfaces, data, and security constraints
 - The installer reads the **pushed** `main` branch; local changes only take effect after commit + push.
-- GitHub contents API is unauthenticated (60 requests/hour per IP); if it is unreachable the agent files are
-  skipped with a warning — there is intentionally no hardcoded fallback list of agent names.
+- GitHub contents API is unauthenticated (60 requests/hour per IP); if it is unreachable **all** deployed
+  templates (workspace files, agent files and the global config) are skipped with a warning — there is
+  intentionally no hardcoded fallback list of file or agent names. A normal run uses exactly two listings:
+  `Linux/opencode` (cached and shared by the workspace and global-config steps) and `Linux/opencode/agents`.
 - Known parser limitation (no-jq fallback in `setup.sh`): filenames containing `}{` or escaped quotes are not
   recognized.
 - `opencode.json` contains a provider API key. Never copy credentials into `PROJECT.md`, `DEVSTATE.md`,
@@ -56,6 +65,9 @@ Components (see `README.md` for the full list):
 
 ## Lasting decisions and constraints
 - Documentation split: `PROJECT.md` = durable project facts and rules, `DEVSTATE.md` = current handoff state.
+- Folder resolution in `setup.sh` is deliberately **non-recursive**: only `Linux/opencode` and
+  `Linux/opencode/agents` are listed. Any other subfolder would need a script change; `*.sh` files and
+  `tests/` content are intentionally never deployed into the workspace.
 - The primary agent owns `PROJECT.md`/`DEVSTATE.md`; implementer and reviewer read them but do not edit them,
   and never commit or push.
 - Commits and pushes require explicit user instructions.
