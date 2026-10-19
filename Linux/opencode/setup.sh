@@ -8,13 +8,17 @@
 #   ausgeführt. Installiert opencode v2, installiert das Telegram-Plugin
 #   (@grinev/opencode-telegram-bot), entfernt alle anderen vorhandenen
 #   opencode-Versionen (z. B. v1) und legt im Projekt-Workspace die
-#   Template-Dateien aus dem Ordner Linux/opencode an (AGENTS.md,
-#   repo-config.json -> opencode.json, alle Dateien aus
-#   Linux/opencode/agents -> .opencode/agents/<dateiname>; diese Liste wird
-#   dynamisch über die GitHub-Contents-API ermittelt, da das Skript per
-#   'curl | bash' ohne lokalen Checkout ausgeführt wird) sowie
-#   global-config.json -> ~/.config/opencode/opencode.json;
-#   vorhandene Dateien werden NIEMALS überschrieben. Wird das Skript als
+#   Template-Dateien aus dem Ordner Linux/opencode an. Welche Dateien das
+#   sind, wird ausschließlich aus der Ordnerauflösung von Linux/opencode über
+#   die GitHub-Contents-API ermittelt (ein API-Aufruf pro Ordner, einzelne
+#   Dateinamen sind nicht hinterlegt, da das Skript per 'curl | bash' ohne
+#   lokalen Checkout ausgeführt wird). Regeln: reguläre Dateien dieses Ordners
+#   -> gleicher Name im Workspace, repo-config.json -> opencode.json, alle
+#   Dateien aus Linux/opencode/agents -> .opencode/agents/<dateiname>,
+#   *.sh -> übersprungen; die Top-Level-Datei nach Muster global-*.json ->
+#   ~/.config/opencode/opencode.json. Feste URLs enthält nur der Abruf des
+#   Skripts selbst und des opencode-Installers.
+#   Vorhandene Dateien werden NIEMALS überschrieben. Wird das Skript als
 #   postCreateCommand ausgeführt (erkannt am ausführenden User: der
 #   Docker-Build (RUN) läuft als root, die postCreateCommand als
 #   Container-User (remoteUser, z. B. vscode)), startet es am Ende
@@ -38,15 +42,6 @@ API_BASE="https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents"
 # v2-Installer (installiert die Version aus dem v2-Channel, z. B. 2.0.x;
 # der v1-Installer würde weiterhin nur die letzten v1-Releases liefern)
 OPENCODE_INSTALL_URL="https://opencode.ai/v2/install"
-
-# Template-Dateien, die aus Linux/opencode in den Projekt-Workspace kopiert
-# werden (Format: "<Quellpfad im Repo>|<Zielpfad relativ zum Workspace>");
-# die Agent-Dateien werden unten dynamisch ergänzt (siehe
-# agent_workspace_entries), einzelne Agent-Namen sind nicht hinterlegt:
-WORKSPACE_FILES=(
-  "Linux/opencode/AGENTS.md|AGENTS.md"
-  "Linux/opencode/repo-config.json|opencode.json"
-)
 
 # Ziel-User und Pfade (Standard: vscode-User, wie im devcontainer)
 if id -u vscode >/dev/null 2>&1; then
@@ -114,7 +109,7 @@ download() {
 # das Skript läuft per 'curl | bash' ohne lokalen Checkout, die Liste kann
 # daher nicht aus dem Repository gelesen werden. Meldungen gehen auf
 # Standardfehler, damit die Ausgabe ausgewertet werden kann. Schlägt weich
-# fehl (Warnung, leere Ausgabe), da die Agent-Dateien optional sind.
+# fehl (Warnung, leere Ausgabe), da alle Template-Dateien optional sind.
 list_repo_files() {
   local path="$1" tmp
   if ! tmp="$(mktemp)"; then
@@ -157,6 +152,55 @@ agent_workspace_entries() {
     [[ -n "${name}" ]] || continue
     printf '%s/%s|%s/%s\n' "${dir}" "${name}" ".opencode/agents" "${name}"
   done < <(list_repo_files "${dir}")
+  return 0
+}
+
+# Zwischenspeicher der Ordnerauflösung von Linux/opencode: die Liste wird pro
+# Lauf nur EINMAL über die Contents-API geholt und sowohl für die
+# Workspace-Dateien (4a) als auch für die globale Config (4b) benutzt
+OPENCODE_DIR_NAMES=""
+OPENCODE_DIR_LISTED=0
+
+# Namen der Einträge von Linux/opencode (je einer pro Zeile; nur reguläre
+# Dateien, Unterordner werden von list_repo_files gefiltert); wiederholt die
+# zwischengespeicherte Auflistung, ohne erneut die API anzusprechen. Meldungen
+# gehen auf Standardfehler.
+list_opencode_dir() {
+  if [[ "${OPENCODE_DIR_LISTED:-0}" -eq 0 ]]; then
+    OPENCODE_DIR_NAMES="$(list_repo_files "Linux/opencode")"
+    OPENCODE_DIR_LISTED=1
+  fi
+  if [[ -n "${OPENCODE_DIR_NAMES:-}" ]]; then
+    printf '%s\n' "${OPENCODE_DIR_NAMES}"
+  fi
+  return 0
+}
+
+# Workspace-Einträge aus der Ordnerauflösung von Linux/opencode ableiten, im
+# Format "<Quellpfad im Repo>|<Zielpfad relativ zum Workspace>", je einer pro
+# Zeile. Die Dateien werden nicht einzeln aufgeführt, sondern nach Regeln
+# zugeordnet:
+#   repo-config.json -> opencode.json
+#   global-*.json    -> übersprungen (kommt global an ~/.config/opencode,
+#                        siehe Abschnitt 4b)
+#   *.sh             -> übersprungen (setup.sh und Testskripte gehören nicht
+#                        in den Workspace)
+#   sonst            -> gleicher Dateiname im Workspace
+workspace_entries_from_dir() {
+  local name dest
+  while IFS= read -r name; do
+    [[ -n "${name}" ]] || continue
+    dest=""
+    case "${name}" in
+      repo-config.json) dest="opencode.json" ;;
+      global-*.json) continue ;;
+      *.sh) continue ;;
+      *) dest="${name}" ;;
+    esac
+    if [[ -n "${dest}" ]]; then
+      printf '%s|%s\n' "Linux/opencode/${name}" "${dest}"
+    fi
+  done < <(list_opencode_dir)
   return 0
 }
 
@@ -540,25 +584,41 @@ fi
 # 4) Template-Dateien aus dem Repo legen (optional – schlagen nicht hart
 #    fehl, werden NIEMALS überschrieben)
 # ---------------------------------------------------------------------------
-# 4a) Projekt-Dateien in den Workspace (falls ein Workspace existiert)
+# 4a) Projekt-Dateien in den Workspace (falls ein Workspace existiert); die
+#     vollständige Liste kommt aus der Ordnerauflösung von Linux/opencode
 if [[ -z "${WORKSPACE_DIR}" || ! -d "${WORKSPACE_DIR}" ]]; then
   log "HINWEIS: kein Workspace-Verzeichnis gefunden, Workspace-Installation übersprungen"
 else
   log "Workspace: ${WORKSPACE_DIR}"
-  # Agent-Dateien dynamisch ergänzen (Liste kommt aus der GitHub-API)
+  # Ordnerauflösung genau einmal pro Lauf: der Zwischenspeicher wird hier
+  # gefüllt und von 4a und 4b benutzt (die Schleifen laufen in Subshells)
+  list_opencode_dir >/dev/null
   while IFS= read -r entry; do
     [[ -n "${entry}" ]] || continue
-    WORKSPACE_FILES+=("${entry}")
-  done <<< "$(agent_workspace_entries)"
-  for entry in "${WORKSPACE_FILES[@]}"; do
     deploy_file "${entry%%|*}" "${WORKSPACE_DIR}/${entry#*|}"
-  done
+  done < <(
+    workspace_entries_from_dir
+    agent_workspace_entries
+  )
 fi
 
 # 4b) Globale opencode-Config nach ~/.config/opencode/opencode.json
-#     (unabhängig vom Workspace; wird NIEMALS überschrieben)
+#     (unabhängig vom Workspace; die Quelldatei wird aus derselben
+#     Ordnerauflösung nach Muster global-*.json bestimmt, kein fester
+#     Dateipfad; wird NIEMALS überschrieben)
 GLOBAL_CONFIG_DEST="${TARGET_HOME}/.config/opencode/opencode.json"
-deploy_file "Linux/opencode/global-config.json" "${GLOBAL_CONFIG_DEST}"
+GLOBAL_CONFIG_SRC=""
+while IFS= read -r name; do
+  [[ -n "${name}" ]] || continue
+  case "${name}" in
+    global-*.json) GLOBAL_CONFIG_SRC="Linux/opencode/${name}"; break ;;
+  esac
+done < <(list_opencode_dir)
+if [[ -z "${GLOBAL_CONFIG_SRC}" ]]; then
+  log "HINWEIS: keine global-*.json in Linux/opencode gefunden (oder Auflistung fehlgeschlagen), globale Config übersprungen"
+else
+  deploy_file "${GLOBAL_CONFIG_SRC}" "${GLOBAL_CONFIG_DEST}"
+fi
 
 # ---------------------------------------------------------------------------
 # 5) opencode service starten (nur im postCreate-Fall; der Docker-Build
