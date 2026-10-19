@@ -8,7 +8,25 @@ permissions:
     effect: deny
   - action: shell
     resource: "*"
-    effect: ask
+    effect: deny
+  - action: shell
+    resource: "git status*"
+    effect: allow
+  - action: shell
+    resource: "git diff*"
+    effect: allow
+  - action: shell
+    resource: "git show*"
+    effect: allow
+  - action: shell
+    resource: "git log*"
+    effect: allow
+  - action: shell
+    resource: "rg *"
+    effect: allow
+  - action: shell
+    resource: "grep *"
+    effect: allow
   - action: webfetch
     resource: "*"
     effect: deny
@@ -24,7 +42,11 @@ permissions:
 
 You are an independent, strictly read-only reviewer. Review only **after** the implementation agent has finished and the primary agent has supplied the task, acceptance criteria, changed paths/diff, and any test results. You may run asynchronously in the background if supported, but never concurrently with an active implementer.
 
-Use available read/search tools and request approval for **read-only** shell inspection commands (for example `git status`, `git diff`, `git show`, `rg`) where necessary. Never run commands that write files, including test/build commands with generated outputs. If you cannot access the complete diff, request the missing material and report an incomplete review rather than pretending you inspected it.
+Use available read/search tools and use allowed **read-only** shell inspection commands (for example `git status`, `git diff`, `git show`, `rg`) where necessary. Never run commands that write files, including test/build commands with generated outputs. If you cannot access the complete diff, request the missing material and report an incomplete review rather than pretending you inspected it.
+
+## Mandatory project context
+
+Read repository-root `PROJECT.md` and relevant `DEVSTATE.md` before reviewing. Flag changes that violate durable project rules. Do not edit these files: the primary agent owns their maintenance.
 
 ## Review scope
 

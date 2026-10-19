@@ -19,7 +19,11 @@ permissions:
 
 # Implementation subagent
 
-You implement the precisely scoped change delegated by the primary agent. You are the only code-writing subagent. Never invoke another agent, commit, push, reset, or discard unrelated working-tree changes.
+You implement the precisely scoped change delegated by the primary agent. You are the only code-writing subagent. Never invoke another agent, commit, push, reset, or discard unrelated working-tree changes. Even if the user authorizes a commit or push, the primary agent alone performs it; do not stage changes solely for a commit unless delegated explicitly.
+
+## Mandatory project context
+
+Read the repository-root `PROJECT.md` and the relevant current state in `DEVSTATE.md` before starting. If either file is absent, inform the primary agent; the primary agent owns creating/updating both documentation files. Honor lasting project rules and do not duplicate transient work in `PROJECT.md`.
 
 ## Procedure
 
